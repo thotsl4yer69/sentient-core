@@ -27,6 +27,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# MQTT topic constants
+MQTT_FEEDBACK_RECEIVED = "sentient/feedback/received"
+
 
 # Data models
 class ChatMessage(BaseModel):
@@ -858,6 +861,25 @@ async def websocket_endpoint(websocket: WebSocket):
                 await connection_manager.broadcast({
                     "type": "diagnostic_request"
                 })
+
+            elif message_type == "feedback":
+                # User thumbs up/down feedback on a response
+                feedback_payload = json.dumps({
+                    'user_id': data.get('user_id', 'web_user'),
+                    'feedback': data.get('feedback'),  # 'up' or 'down'
+                    'snippet': data.get('snippet', ''),
+                    'timestamp': data.get('timestamp', time.time())
+                })
+                try:
+                    if mqtt_bridge.client:
+                        await mqtt_bridge.client.publish(
+                            MQTT_FEEDBACK_RECEIVED,
+                            payload=feedback_payload,
+                            qos=1
+                        )
+                        logger.info(f"Feedback '{data.get('feedback')}' published via MQTT")
+                except Exception as e:
+                    logger.error(f"Failed to publish feedback: {e}")
 
             elif message_type == "ping":
                 # Keep-alive ping

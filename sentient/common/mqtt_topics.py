@@ -70,3 +70,6 @@ REMINDER_SET = "sentient/reminder/set"
 
 # Sensor (wildcard)
 SENSOR_VISION_DETECTION = "sentient/sensor/vision/+/detection"
+
+# Feedback
+FEEDBACK_RECEIVED = "sentient/feedback/received"

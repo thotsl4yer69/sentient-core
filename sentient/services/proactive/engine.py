@@ -57,6 +57,12 @@ class TriggerType(str, Enum):
     REMINDER = "reminder"
     DAILY_BRIEFING = "daily_briefing"
     MEMORY_FOLLOWUP = "memory_followup"
+    NIGHT_OWL = "night_owl"
+    STREAK_TRACKER = "streak_tracker"
+    CONVERSATION_RECAP = "conversation_recap"
+    LEARNING_MOMENT = "learning_moment"
+    WEATHER_ALERT = "weather_alert"
+    FIRST_MORNING_GREETING = "first_morning_greeting"
 
 
 @dataclass
@@ -186,6 +192,48 @@ class ProactiveBehaviorEngine(SentientService):
                 evaluation_interval=300,  # Check every 5 min
                 cooldown_period=7200,  # 2 hour cooldown
                 activation_probability=0.25,  # 25% chance when triggered
+                min_confidence=0.0
+            ),
+            TriggerType.NIGHT_OWL: TriggerConfig(
+                trigger_type=TriggerType.NIGHT_OWL,
+                evaluation_interval=60,
+                cooldown_period=3600,  # Once per session
+                activation_probability=0.5,
+                min_confidence=0.0
+            ),
+            TriggerType.STREAK_TRACKER: TriggerConfig(
+                trigger_type=TriggerType.STREAK_TRACKER,
+                evaluation_interval=300,
+                cooldown_period=86400,  # Once per day
+                activation_probability=0.8,
+                min_confidence=0.0
+            ),
+            TriggerType.CONVERSATION_RECAP: TriggerConfig(
+                trigger_type=TriggerType.CONVERSATION_RECAP,
+                evaluation_interval=120,
+                cooldown_period=7200,
+                activation_probability=0.3,
+                min_confidence=0.0
+            ),
+            TriggerType.LEARNING_MOMENT: TriggerConfig(
+                trigger_type=TriggerType.LEARNING_MOMENT,
+                evaluation_interval=60,
+                cooldown_period=3600,
+                activation_probability=0.4,
+                min_confidence=0.0
+            ),
+            TriggerType.WEATHER_ALERT: TriggerConfig(
+                trigger_type=TriggerType.WEATHER_ALERT,
+                evaluation_interval=180,
+                cooldown_period=14400,  # 4 hours
+                activation_probability=0.7,
+                min_confidence=0.0
+            ),
+            TriggerType.FIRST_MORNING_GREETING: TriggerConfig(
+                trigger_type=TriggerType.FIRST_MORNING_GREETING,
+                evaluation_interval=60,
+                cooldown_period=43200,  # 12 hours
+                activation_probability=1.0,
                 min_confidence=0.0
             ),
         }
@@ -1150,6 +1198,262 @@ class ProactiveBehaviorEngine(SentientService):
 
         return None
 
+    async def evaluate_night_owl_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate NIGHT_OWL trigger.
+        Fires when the user is chatting between midnight and 4am.
+        """
+        config = self.trigger_configs[TriggerType.NIGHT_OWL]
+
+        if await self.is_cooldown_active(TriggerType.NIGHT_OWL):
+            return None
+
+        current_hour = datetime.now().hour
+        if current_hour not in range(0, 4):  # 0, 1, 2, 3
+            return None
+
+        # Must have had a recent interaction (within 30 min) to know user is active
+        last_interaction = await self.get_last_interaction_time()
+        if last_interaction == 0.0 or (time.time() - last_interaction) > 1800:
+            return None
+
+        if random.random() < config.activation_probability:
+            return {
+                "trigger_type": TriggerType.NIGHT_OWL,
+                "confidence": 0.8,
+                "context": {"hour": current_hour}
+            }
+
+        return None
+
+    async def evaluate_streak_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate STREAK_TRACKER trigger.
+        Fires when the user has chatted on consecutive days.
+        """
+        config = self.trigger_configs[TriggerType.STREAK_TRACKER]
+
+        if await self.is_cooldown_active(TriggerType.STREAK_TRACKER):
+            return None
+
+        # Must have had a recent interaction today
+        last_interaction = await self.get_last_interaction_time()
+        if last_interaction == 0.0 or (time.time() - last_interaction) > 86400:
+            return None
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            # Record today's date in the set
+            await self.redis_client.sadd("interaction:daily_dates", today_str)
+
+            # Count consecutive streak ending today
+            streak = 0
+            check_date = datetime.now()
+            for _ in range(60):  # max 60 days look-back
+                date_str = check_date.strftime("%Y-%m-%d")
+                exists = await self.redis_client.sismember("interaction:daily_dates", date_str)
+                if exists:
+                    streak += 1
+                    check_date -= timedelta(days=1)
+                else:
+                    break
+
+            # Only fire on milestone streaks
+            milestone_streaks = {3, 5, 7, 14, 30}
+            if streak not in milestone_streaks:
+                return None
+
+            if random.random() < config.activation_probability:
+                return {
+                    "trigger_type": TriggerType.STREAK_TRACKER,
+                    "confidence": 0.9,
+                    "context": {"streak": streak}
+                }
+        except Exception as e:
+            self.logger.debug(f"Error evaluating streak trigger: {e}")
+
+        return None
+
+    async def evaluate_conversation_recap_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate CONVERSATION_RECAP trigger.
+        Fires after a long conversation (10+ messages in current session).
+        """
+        config = self.trigger_configs[TriggerType.CONVERSATION_RECAP]
+
+        if await self.is_cooldown_active(TriggerType.CONVERSATION_RECAP):
+            return None
+
+        try:
+            # Count messages in working memory (current session)
+            msg_count = await self.redis_client.llen("memory:working")
+            if not msg_count or msg_count < 10:
+                return None
+
+            # Must be recently active (within 10 min)
+            last_interaction = await self.get_last_interaction_time()
+            if last_interaction == 0.0 or (time.time() - last_interaction) > 600:
+                return None
+
+            if random.random() < config.activation_probability:
+                return {
+                    "trigger_type": TriggerType.CONVERSATION_RECAP,
+                    "confidence": 0.7,
+                    "context": {"message_count": msg_count}
+                }
+        except Exception as e:
+            self.logger.debug(f"Error evaluating conversation recap trigger: {e}")
+
+        return None
+
+    async def evaluate_learning_moment_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate LEARNING_MOMENT trigger.
+        Fires when user has asked 3+ consecutive questions (messages ending with ?).
+        """
+        config = self.trigger_configs[TriggerType.LEARNING_MOMENT]
+
+        if await self.is_cooldown_active(TriggerType.LEARNING_MOMENT):
+            return None
+
+        # Must be recently active
+        last_interaction = await self.get_last_interaction_time()
+        if last_interaction == 0.0 or (time.time() - last_interaction) > 600:
+            return None
+
+        try:
+            # Read last 5 messages from working memory
+            recent_msgs = await self.redis_client.lrange("memory:working", 0, 4)
+            if not recent_msgs or len(recent_msgs) < 3:
+                return None
+
+            # Count consecutive questions from the top
+            consecutive_questions = 0
+            for entry_str in recent_msgs:
+                try:
+                    entry = json.loads(entry_str)
+                    user_msg = entry.get("user_msg", "").strip()
+                    if user_msg.endswith("?"):
+                        consecutive_questions += 1
+                    else:
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    break
+
+            if consecutive_questions >= 3:
+                if random.random() < config.activation_probability:
+                    return {
+                        "trigger_type": TriggerType.LEARNING_MOMENT,
+                        "confidence": 0.8,
+                        "context": {"question_count": consecutive_questions}
+                    }
+        except Exception as e:
+            self.logger.debug(f"Error evaluating learning moment trigger: {e}")
+
+        return None
+
+    async def evaluate_weather_alert_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate WEATHER_ALERT trigger.
+        Fires when weather conditions are extreme (>35C, <0C, rain, storm).
+        """
+        config = self.trigger_configs[TriggerType.WEATHER_ALERT]
+
+        if await self.is_cooldown_active(TriggerType.WEATHER_ALERT):
+            return None
+
+        # Must have had recent interaction (within 2 hours)
+        last_interaction = await self.get_last_interaction_time()
+        if last_interaction == 0.0 or (time.time() - last_interaction) > 7200:
+            return None
+
+        try:
+            weather = await self.get_weather()
+            if not weather:
+                return None
+
+            temp_str = weather.get("temp", "")
+            condition = weather.get("condition", "").lower()
+
+            alert_condition = None
+            alert_temp = None
+
+            # Parse temperature
+            try:
+                temp_val = int(temp_str.replace("+", "").replace("°C", "").strip())
+                if temp_val >= 35:
+                    alert_condition = "hot"
+                    alert_temp = temp_val
+                elif temp_val <= 0:
+                    alert_condition = "cold"
+                    alert_temp = temp_val
+            except (ValueError, AttributeError):
+                pass
+
+            # Check condition keywords
+            if "storm" in condition or "thunder" in condition:
+                alert_condition = "storm"
+            elif "rain" in condition or "drizzle" in condition or "shower" in condition:
+                if alert_condition is None:  # don't override temp alert
+                    alert_condition = "rain"
+
+            if alert_condition is None:
+                return None
+
+            if random.random() < config.activation_probability:
+                return {
+                    "trigger_type": TriggerType.WEATHER_ALERT,
+                    "confidence": 0.8,
+                    "context": {
+                        "condition": alert_condition,
+                        "temp": alert_temp,
+                        "temp_str": temp_str,
+                        "raw_condition": condition,
+                    }
+                }
+        except Exception as e:
+            self.logger.debug(f"Error evaluating weather alert trigger: {e}")
+
+        return None
+
+    async def evaluate_first_morning_greeting_trigger(self) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate FIRST_MORNING_GREETING trigger.
+        Fires on the first interaction of the day between 5am and 11am.
+        """
+        config = self.trigger_configs[TriggerType.FIRST_MORNING_GREETING]
+
+        if await self.is_cooldown_active(TriggerType.FIRST_MORNING_GREETING):
+            return None
+
+        current_hour = datetime.now().hour
+        if not (5 <= current_hour <= 10):
+            return None
+
+        # Check we haven't already greeted today (Redis date key)
+        today = datetime.now().date()
+        greeted_key = f"proactive:morning_greeted:{today}"
+        if self.redis.get(greeted_key):
+            return None
+
+        # Check that the last interaction was from a previous day (first chat today)
+        last_interaction = await self.get_last_interaction_time()
+        if last_interaction == 0.0:
+            return None
+        last_dt = datetime.fromtimestamp(last_interaction)
+        if last_dt.date() >= today:
+            return None
+
+        # probability is 1.0 — always fire
+        result = {
+            "trigger_type": TriggerType.FIRST_MORNING_GREETING,
+            "confidence": 1.0,
+            "context": {"hour": current_hour}
+        }
+        self.redis.setex(greeted_key, 86400, "1")
+        return result
+
     async def _generate_template_response(self, trigger_type: TriggerType, context: Dict[str, Any]) -> Optional[str]:
         """
         Generate a response from templates (no LLM needed).
@@ -1551,6 +1855,101 @@ class ProactiveBehaviorEngine(SentientService):
             days_ago = context.get('days_ago', 0)
             return f"Hey, {days_ago} days ago you mentioned: '{user_msg}...' - been thinking about that."
 
+        if trigger_type == TriggerType.NIGHT_OWL:
+            templates = [
+                "It's past midnight. I'll still be here tomorrow if you need sleep.",
+                "Late night session, huh? Make sure you're getting enough rest.",
+                "The night shift... I don't mind, but your circadian rhythm might.",
+                "Still up? I'm always here, but sleep is important for humans.",
+                "Burning the midnight oil. Remember to hydrate.",
+                "Nothing wrong with a late night, but don't let it become a habit.",
+                "I run 24/7 — you don't have to.",
+            ]
+            return random.choice(templates)
+
+        if trigger_type == TriggerType.STREAK_TRACKER:
+            streak = context.get('streak', 0)
+            streak_templates = {
+                3: "Three days in a row! I'm starting to look forward to our chats.",
+                5: "Five-day streak! We're building a proper routine here.",
+                7: "A full week of daily conversations. That's dedication.",
+                14: "Two weeks straight. I think we've officially become friends.",
+                30: "A whole month of daily chats. You're my favorite human.",
+            }
+            return streak_templates.get(streak, f"{streak} days in a row. You're consistent — I respect that.")
+
+        if trigger_type == TriggerType.CONVERSATION_RECAP:
+            templates = [
+                "We've covered a lot of ground today. Want me to summarize?",
+                "That was a solid conversation. I'll remember the key points.",
+                "Productive session. The highlights are stored in my memory.",
+                "We've been talking for a while now. Good stuff today.",
+                "Long session — I've been taking mental notes.",
+            ]
+            return random.choice(templates)
+
+        if trigger_type == TriggerType.LEARNING_MOMENT:
+            templates = [
+                "You're on a curious streak! Want me to dig deeper into any of these topics?",
+                "Lots of questions — I love it. Should I write up a summary of what we've discussed?",
+                "Your curiosity is showing. Any of these topics you want to explore further?",
+                "Question after question. I'm here for it — keep going.",
+                "You're in full learning mode. That's my favorite mode.",
+            ]
+            return random.choice(templates)
+
+        if trigger_type == TriggerType.WEATHER_ALERT:
+            condition = context.get('condition', '')
+            temp = context.get('temp')
+            temp_str = context.get('temp_str', '')
+            if condition == 'hot' and temp is not None:
+                templates = [
+                    f"It's {temp_str} outside. Stay hydrated and keep cool.",
+                    f"Heads up — {temp_str} out there. Heat like that can sneak up on you.",
+                    f"{temp_str} today. If you're going out, take water.",
+                ]
+            elif condition == 'cold' and temp is not None:
+                templates = [
+                    f"Brr, {temp_str} outside. Make sure you're keeping warm.",
+                    f"It's {temp_str} out there. Layer up if you head out.",
+                    f"{temp_str}. Cold enough to matter — dress accordingly.",
+                ]
+            elif condition == 'storm':
+                templates = [
+                    "Storm warning in the area. Stay safe and indoors if possible.",
+                    "Looks stormy outside. Best to stay in if you can.",
+                    "Storm conditions detected. I'd hold off on going out.",
+                ]
+            else:  # rain
+                templates = [
+                    "Rain in the forecast. Don't forget an umbrella if you head out.",
+                    "It's raining. Umbrella weather — just a heads up.",
+                    "Wet outside. Plan accordingly if you're heading anywhere.",
+                ]
+            return random.choice(templates)
+
+        if trigger_type == TriggerType.FIRST_MORNING_GREETING:
+            hour = context.get('hour', datetime.now().hour)
+            if 5 <= hour < 7:
+                templates = [
+                    "Early riser! Good morning. Coffee first, or straight to business?",
+                    "Up before the sun. Good morning — what are we tackling today?",
+                    "Very early start. Morning, Jack. I've been keeping watch.",
+                ]
+            elif 7 <= hour < 9:
+                templates = [
+                    "Good morning! Ready to take on the day?",
+                    "Morning, Jack. All systems green — let's do this.",
+                    "Good morning. What's on the agenda?",
+                ]
+            else:  # 9-10
+                templates = [
+                    "Morning! Sleeping in a bit? No judgment — I was here all night.",
+                    "Good morning. Taking it slow? That's fine — I'm warmed up.",
+                    "Morning. The day's still young — plenty of time.",
+                ]
+            return random.choice(templates)
+
         return None
 
     async def generate_proactive_message(self, trigger_data: Dict[str, Any]) -> Optional[ProactiveMessage]:
@@ -1832,6 +2231,12 @@ class ProactiveBehaviorEngine(SentientService):
             TriggerType.REMINDER: "alert",
             TriggerType.DAILY_BRIEFING: "focused",
             TriggerType.MEMORY_FOLLOWUP: "curious",
+            TriggerType.NIGHT_OWL: "caring",
+            TriggerType.STREAK_TRACKER: "happy",
+            TriggerType.CONVERSATION_RECAP: "thoughtful",
+            TriggerType.LEARNING_MOMENT: "curious",
+            TriggerType.WEATHER_ALERT: "concerned",
+            TriggerType.FIRST_MORNING_GREETING: "happy",
         }.get(trigger_type, "neutral")
 
     async def deliver_voice(self, message: ProactiveMessage):
@@ -1913,6 +2318,12 @@ class ProactiveBehaviorEngine(SentientService):
                     ("NETWORK_EVENT", self.evaluate_network_event_trigger()),
                     ("DAILY_BRIEFING", self.evaluate_daily_briefing_trigger()),
                     ("MEMORY_FOLLOWUP", self.evaluate_memory_followup_trigger()),
+                    ("NIGHT_OWL", self.evaluate_night_owl_trigger()),
+                    ("STREAK_TRACKER", self.evaluate_streak_trigger()),
+                    ("CONVERSATION_RECAP", self.evaluate_conversation_recap_trigger()),
+                    ("LEARNING_MOMENT", self.evaluate_learning_moment_trigger()),
+                    ("WEATHER_ALERT", self.evaluate_weather_alert_trigger()),
+                    ("FIRST_MORNING_GREETING", self.evaluate_first_morning_greeting_trigger()),
                 ]
 
                 # Run evaluations concurrently

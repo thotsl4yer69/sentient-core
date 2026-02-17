@@ -765,6 +765,28 @@ class ChatInterface {
 
         contentEl.appendChild(bubbleEl);
         contentEl.appendChild(metaEl);
+
+        // Add feedback buttons to assistant messages (below meta row)
+        if (role === 'assistant' && content && !isStreaming) {
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'message-feedback';
+            feedbackDiv.innerHTML = `
+                <button class="feedback-btn feedback-up" title="Good response" data-feedback="up">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                    </svg>
+                </button>
+                <button class="feedback-btn feedback-down" title="Could be better" data-feedback="down">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                    </svg>
+                </button>
+            `;
+            feedbackDiv.querySelectorAll('.feedback-btn').forEach(btn => {
+                btn.addEventListener('click', (event) => this.sendFeedback(event, btn.dataset.feedback, content.substring(0, 100)));
+            });
+            contentEl.appendChild(feedbackDiv);
+        }
         messageEl.appendChild(avatarEl);
         messageEl.appendChild(contentEl);
 
@@ -821,7 +843,13 @@ class ChatInterface {
                 'reminder': 'REMINDER',
                 'daily_briefing': 'DAILY BRIEFING',
                 'network_event': 'NETWORK ALERT',
-                'memory_followup': 'MEMORY RECALL'
+                'memory_followup': 'MEMORY RECALL',
+                'night_owl': 'NIGHT OWL',
+                'streak_tracker': 'STREAK',
+                'conversation_recap': 'RECAP',
+                'learning_moment': 'CURIOUS',
+                'weather_alert': 'WEATHER',
+                'first_morning_greeting': 'GOOD MORNING'
             };
             const labelText = labelMap[triggerType] || 'AUTONOMOUS';
             const label = document.createElement('div');
@@ -911,6 +939,7 @@ class ChatInterface {
                 }
             }
 
+            if (window.avatarRenderer?.setState) window.avatarRenderer.setState('idle');
             this._streamingEl = null;
             // Reset Piper audio flag for next message
             this._piperAudioPlayed = false;
@@ -930,8 +959,10 @@ class ChatInterface {
             this.messagesContainer.appendChild(messageEl);
             this._streamingEl = bubbleEl;
             this._streamingText = '';
+            if (window.avatarRenderer?.setState) window.avatarRenderer.setState('processing');
         }
 
+        if (window.avatarRenderer?.onStreamToken) window.avatarRenderer.onStreamToken();
         this._streamingText += token;
         // Show plain text during streaming with blinking cursor
         this._streamingEl.textContent = this._streamingText;
@@ -943,6 +974,20 @@ class ChatInterface {
         }
         this._streamingEl.appendChild(cursor);
         if (this._userAtBottom) this.scrollToBottom();
+    }
+
+    sendFeedback(event, type, snippet) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'feedback',
+                feedback: type,
+                snippet: snippet,
+                timestamp: Date.now() / 1000
+            }));
+        }
+        const btn = event.target.closest('.feedback-btn');
+        if (btn) btn.classList.add('feedback-sent');
+        this.showNotification(type === 'up' ? 'Thanks! Noted.' : "Got it, I'll adjust.", 'info');
     }
 
     loadMessageHistory(messages) {

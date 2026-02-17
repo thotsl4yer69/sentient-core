@@ -131,6 +131,43 @@
             this.coreRadius = 50;
             this.corePulsePhase = 0;
 
+            // --- Micro-expression state ---
+
+            // Blinking
+            this.blinkTimer = 0;
+            this.blinkInterval = this._randomBlinkInterval(); // frames until next blink
+            this.isBlinking = false;
+            this.blinkFrame = 0;
+            this.blinkDuration = Math.round(150 / FRAME_TIME); // ~5 frames at 30fps
+
+            // Micro-drift (idle head movement)
+            this.microDriftX = 0;
+            this.microDriftY = 0;
+            this._driftTargetX = 0;
+            this._driftTargetY = 0;
+            this._driftTimer = 0;
+            this._driftInterval = this._randomDriftInterval();
+
+            // Processing state (token streaming)
+            this.currentState = 'idle'; // 'idle' | 'processing'
+            this._processingRampFrames = 0;
+            this._processingRampDuration = Math.round(2000 / FRAME_TIME); // 2 seconds
+            this._ringSpeedMultiplier = 1.0; // lerps toward target
+            this._ringSpeedTarget = 1.0;
+            this._particleSpeedBoost = 1.0;
+
+            // Token pulse (brief brightness flash on core)
+            this._tokenPulseAlpha = 0; // extra alpha on core, decays
+            this._tokenPulseDuration = Math.round(50 / FRAME_TIME); // ~2 frames
+            this._tokenPulseDecay = 0.2 / (this._tokenPulseDuration || 1);
+
+            // Confusion wobble
+            this._confusionWobble = 0;   // current wobble angle offset (degrees)
+            this._confusionPhase = 0;    // drives oscillation
+
+            // Excitement expansion
+            this._excitementScale = 1.0; // multiplier on coreRadius and particle orbit
+
             this.setupCanvas();
             this.setupEventListeners();
             this.start();
@@ -154,6 +191,16 @@
                 result.push(chars.charAt(Math.floor(Math.random() * chars.length)));
             }
             return result;
+        }
+
+        // Random blink interval: 3-5 seconds in frames
+        _randomBlinkInterval() {
+            return Math.round((3000 + Math.random() * 2000) / FRAME_TIME);
+        }
+
+        // Random micro-drift interval: 2-3 seconds in frames
+        _randomDriftInterval() {
+            return Math.round((2000 + Math.random() * 1000) / FRAME_TIME);
         }
 
         setupCanvas() {
@@ -241,6 +288,66 @@
             // Thinking state from emotion
             this.isThinking = (this.currentEmotion === 'thinking' || this.currentEmotion === 'analyzing' || this.currentEmotion === 'focused');
 
+            // --- BLINK ---
+            if (!this.isBlinking) {
+                this.blinkTimer++;
+                if (this.blinkTimer >= this.blinkInterval) {
+                    this.isBlinking = true;
+                    this.blinkFrame = 0;
+                    this.blinkTimer = 0;
+                    this.blinkInterval = this._randomBlinkInterval();
+                }
+            } else {
+                this.blinkFrame++;
+                if (this.blinkFrame >= this.blinkDuration) {
+                    this.isBlinking = false;
+                    this.blinkFrame = 0;
+                }
+            }
+
+            // --- MICRO DRIFT ---
+            this._driftTimer++;
+            if (this._driftTimer >= this._driftInterval) {
+                this._driftTargetX = (Math.random() - 0.5) * 4; // ±2px
+                this._driftTargetY = (Math.random() - 0.5) * 4;
+                this._driftTimer = 0;
+                this._driftInterval = this._randomDriftInterval();
+            }
+            this.microDriftX = this.lerp(this.microDriftX, this._driftTargetX, 0.02);
+            this.microDriftY = this.lerp(this.microDriftY, this._driftTargetY, 0.02);
+
+            // --- PROCESSING STATE ring speed ramp ---
+            if (this.currentState === 'processing') {
+                this._ringSpeedTarget = 2.5;
+                this._particleSpeedBoost = this.lerp(this._particleSpeedBoost, 2.0, 0.02);
+            } else {
+                this._ringSpeedTarget = 1.0;
+                this._particleSpeedBoost = this.lerp(this._particleSpeedBoost, 1.0, 0.04);
+            }
+            this._ringSpeedMultiplier = this.lerp(this._ringSpeedMultiplier, this._ringSpeedTarget, 0.02);
+
+            // --- TOKEN PULSE decay ---
+            if (this._tokenPulseAlpha > 0) {
+                this._tokenPulseAlpha = Math.max(0, this._tokenPulseAlpha - 0.12);
+            }
+
+            // --- CONFUSION WOBBLE ---
+            if (this.currentEmotion === 'confused') {
+                this._confusionPhase += Math.PI * 2 / (0.5 * 30); // 0.5s period at 30fps
+                this._confusionWobble = Math.sin(this._confusionPhase) * 3; // ±3 degrees
+            } else {
+                this._confusionWobble = this.lerp(this._confusionWobble, 0, 0.1);
+                this._confusionPhase = 0;
+            }
+
+            // --- EXCITEMENT SCALE ---
+            if (this.currentEmotion === 'excited' || this.currentEmotion === 'joy' || this.currentEmotion === 'happy' || this.currentEmotion === 'pleased') {
+                this._excitementScale = this.lerp(this._excitementScale, 1.15, 0.04);
+                this._ringSpeedTarget = Math.max(this._ringSpeedTarget, 1.5);
+            } else {
+                this._excitementScale = this.lerp(this._excitementScale, 1.0, 0.04);
+            }
+
             // Iris tracking
             if (this.time - this.lastMouseMoveTime > 60) { // 2 seconds at 30fps
                 this.mouseInactive = true;
@@ -271,9 +378,6 @@
                 }
             }
 
-            // Core pulse (0.5Hz = full cycle every 2 seconds, at 30fps = 60 frames)
-            this.corePulsePhase += Math.PI * 2 / 60;
-
             // Waveform fade
             if (this.isSpeaking) {
                 this.waveformOpacity = Math.min(1, this.waveformOpacity + 0.1);
@@ -299,16 +403,23 @@
             // Particles
             const speedMultiplier = this.isSpeaking ? 1.5 : 1.0;
             const clusterFactor = this.isThinking ? 0.95 : 1.0;
+            // Excitement pushes particles outward; excitement scale also expands orbit bounds
+            const excitedOrbitMax = Math.round(140 * this._excitementScale);
 
             for (const particle of this.particles) {
-                particle.angle += particle.speed * 0.01 * speedMultiplier;
+                particle.angle += particle.speed * 0.01 * speedMultiplier * this._particleSpeedBoost;
                 particle.radius += particle.radialDrift * particle.driftDirection * 0.1;
 
-                // Bounce radius
+                // Bounce radius (excitement expands outer bound)
                 if (particle.radius < 50) {
                     particle.driftDirection = 1;
-                } else if (particle.radius > 140) {
+                } else if (particle.radius > excitedOrbitMax) {
                     particle.driftDirection = -1;
+                }
+
+                // Excitement nudges particles outward
+                if (this._excitementScale > 1.01) {
+                    particle.radius = this.lerp(particle.radius, particle.radius * this._excitementScale * 0.01 + particle.radius * 0.99, 0.02);
                 }
 
                 // Cluster effect when thinking
@@ -321,11 +432,11 @@
                 particle.opacity = particle.baseOpacity + Math.sin(particle.twinklePhase) * 0.3;
             }
 
-            // Rings
+            // Rings (apply speed multiplier)
             for (const ring of this.rings) {
-                ring.rotation += ring.speed;
+                ring.rotation += ring.speed * this._ringSpeedMultiplier;
                 for (const dot of ring.dots) {
-                    dot.angle += dot.speed * 0.01;
+                    dot.angle += dot.speed * 0.01 * this._ringSpeedMultiplier;
                 }
             }
 
@@ -429,63 +540,87 @@
         }
 
         renderCore(ctx) {
-            const pulse = Math.sin(this.corePulsePhase) * 4;
-            const radius = this.coreRadius + pulse;
+            // Processing state: faster pulse period
+            const pulsePeriod = (this.currentState === 'processing') ? 30 : 60; // frames per cycle
+            this.corePulsePhase += Math.PI * 2 / pulsePeriod;
+
+            const pulse = Math.sin(this.corePulsePhase) * 4 * this._excitementScale;
+            const baseRadius = this.coreRadius * this._excitementScale;
+            const radius = baseRadius + pulse;
+
+            // Confusion flicker: random alpha jitter ±0.1
+            const confusionJitter = (this.currentEmotion === 'confused')
+                ? (Math.random() - 0.5) * 0.2
+                : 0;
+
             const brightness = this.isSpeaking ? 1.3 : 1.0;
+            const tokenBoost = this._tokenPulseAlpha; // 0..0.2 extra alpha
 
             // Outer glow ring
             ctx.beginPath();
-            ctx.arc(this.centerX, this.centerY, radius + 3, 0, Math.PI * 2);
-            ctx.strokeStyle = this.rgba(this.currentColor, 0.4 * brightness);
+            ctx.arc(this.centerX + this.microDriftX, this.centerY + this.microDriftY, radius + 3, 0, Math.PI * 2);
+            ctx.strokeStyle = this.rgba(this.currentColor, Math.min(1, 0.4 * brightness + tokenBoost + confusionJitter));
             ctx.lineWidth = 2;
             ctx.stroke();
 
             // Multi-layer radial gradient
-            const gradient = ctx.createRadialGradient(
-                this.centerX, this.centerY, 0,
-                this.centerX, this.centerY, radius
-            );
-            gradient.addColorStop(0, this.rgba(this.currentColor, 1.0 * brightness));
-            gradient.addColorStop(0.3, this.rgba(this.currentColor, 0.8 * brightness));
-            gradient.addColorStop(0.6, this.rgba(this.currentColor, 0.4 * brightness));
+            const cx = this.centerX + this.microDriftX;
+            const cy = this.centerY + this.microDriftY;
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+            gradient.addColorStop(0, this.rgba(this.currentColor, Math.min(1, 1.0 * brightness + tokenBoost + confusionJitter)));
+            gradient.addColorStop(0.3, this.rgba(this.currentColor, Math.min(1, 0.8 * brightness + tokenBoost)));
+            gradient.addColorStop(0.6, this.rgba(this.currentColor, Math.min(1, 0.4 * brightness + tokenBoost * 0.5)));
             gradient.addColorStop(1, this.rgba(this.currentColor, 0));
 
             ctx.beginPath();
-            ctx.arc(this.centerX, this.centerY, radius, 0, Math.PI * 2);
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.fillStyle = gradient;
             ctx.fill();
         }
 
         renderIris(ctx) {
-            const irisRadius = 8;
+            // Blink: contract iris to 70% over blinkDuration frames then expand back
+            let blinkScale = 1.0;
+            if (this.isBlinking) {
+                const half = this.blinkDuration / 2;
+                const t = this.blinkFrame / this.blinkDuration; // 0..1
+                // contract on first half, expand on second half
+                blinkScale = t < 0.5
+                    ? this.lerp(1.0, 0.3, t / 0.5)
+                    : this.lerp(0.3, 1.0, (t - 0.5) / 0.5);
+            }
+
+            const irisRadius = 8 * blinkScale;
             const irisBrightness = this.attentionState === 'listening' ? 1.5 : 1.0;
 
+            // Apply micro-drift to iris position as well
+            const ix = this.irisX + this.microDriftX * 0.5;
+            const iy = this.irisY + this.microDriftY * 0.5;
+
             // Iris glow
-            const gradient = ctx.createRadialGradient(
-                this.irisX, this.irisY, 0,
-                this.irisX, this.irisY, irisRadius * 2
-            );
+            const gradient = ctx.createRadialGradient(ix, iy, 0, ix, iy, irisRadius * 2);
             gradient.addColorStop(0, this.rgba(this.currentColor, 1.0 * irisBrightness));
             gradient.addColorStop(0.5, this.rgba(this.currentColor, 0.6 * irisBrightness));
             gradient.addColorStop(1, this.rgba(this.currentColor, 0));
 
             ctx.beginPath();
-            ctx.arc(this.irisX, this.irisY, irisRadius * 2, 0, Math.PI * 2);
+            ctx.arc(ix, iy, Math.max(0.5, irisRadius * 2), 0, Math.PI * 2);
             ctx.fillStyle = gradient;
             ctx.fill();
 
             // Iris core
             ctx.beginPath();
-            ctx.arc(this.irisX, this.irisY, irisRadius, 0, Math.PI * 2);
+            ctx.arc(ix, iy, Math.max(0.5, irisRadius), 0, Math.PI * 2);
             ctx.fillStyle = this.rgba(this.currentColor, 1.0);
             ctx.fill();
         }
 
         renderRings(ctx) {
+            const wobbleRad = this._confusionWobble * Math.PI / 180;
             for (const ring of this.rings) {
                 ctx.save();
-                ctx.translate(this.centerX, this.centerY);
-                ctx.rotate(ring.rotation);
+                ctx.translate(this.centerX + this.microDriftX, this.centerY + this.microDriftY);
+                ctx.rotate(ring.rotation + wobbleRad);
 
                 // Draw ellipse with tilt
                 const tiltRad = ring.tilt * Math.PI / 180;
@@ -652,6 +787,14 @@
             this.isSpeaking = active;
         }
 
+        setState(state) {
+            this.currentState = state;
+        }
+
+        onStreamToken() {
+            this._tokenPulseAlpha = 0.2;
+        }
+
         setAttentionState(state) {
             // 'focused', 'listening', 'alert', 'relaxed'
             this.attentionState = state;
@@ -753,6 +896,8 @@
         window.avatarRenderer = {
             setEmotion: avatar.setEmotion.bind(avatar),
             setSpeaking: avatar.setSpeaking.bind(avatar),
+            setState: avatar.setState.bind(avatar),
+            onStreamToken: avatar.onStreamToken.bind(avatar),
             setAttentionState: avatar.setAttentionState.bind(avatar),
             updateFromChatMessage: avatar.updateFromChatMessage.bind(avatar),
             processPhonemes: avatar.processPhonemes.bind(avatar),

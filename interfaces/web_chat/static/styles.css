@@ -2070,3 +2070,56 @@ pre:hover .code-copy-btn {
     from { transform: translateY(-100%); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* =====================================================
+   MESSAGE FEEDBACK (thumbs up/down)
+   ===================================================== */
+
+.message-feedback {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.message:hover .message-feedback {
+    opacity: 0.5;
+}
+
+.message-feedback:hover {
+    opacity: 1 !important;
+}
+
+.feedback-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--color-text-dim, #4a5568);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.feedback-btn:hover {
+    border-color: var(--color-primary, #00c8ff);
+    color: var(--color-primary, #00c8ff);
+}
+
+.feedback-btn.feedback-sent {
+    color: var(--color-primary, #00c8ff);
+    border-color: var(--color-primary, #00c8ff);
+    pointer-events: none;
+}
+
+.feedback-up.feedback-sent {
+    color: #4ade80;
+    border-color: #4ade80;
+}
+
+.feedback-down.feedback-sent {
+    color: #f87171;
+    border-color: #f87171;
+}

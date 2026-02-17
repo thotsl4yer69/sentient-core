@@ -220,6 +220,14 @@ class ConversationOrchestrator(SentientService):
             except Exception as e:
                 self.logger.error(f"Error handling TTS control: {e}", exc_info=True)
 
+        @self.on_mqtt(mqtt_topics.FEEDBACK_RECEIVED)
+        async def handle_feedback_mqtt(topic: str, payload: bytes):
+            try:
+                data = json.loads(payload.decode('utf-8'))
+                await self._handle_feedback(data)
+            except Exception as e:
+                self.logger.error(f"Error handling feedback: {e}", exc_info=True)
+
     async def setup(self):
         """Initialize all service connections and resources"""
         self.logger.info("Initializing Conversation Orchestrator...")
@@ -876,6 +884,9 @@ class ConversationOrchestrator(SentientService):
                     f"{category}/{command}", tool_output
                 )
 
+            # Step 0.6: Get feedback context (user ratings of past responses)
+            feedback_context = await self._get_feedback_context(user_id)
+
             # Build system_context for contemplation (separate from user text)
             # This goes into the system prompt, keeping user message clean
             system_context_parts = []
@@ -883,6 +894,8 @@ class ConversationOrchestrator(SentientService):
                 system_context_parts.append(core_facts)
             if mood_context:
                 system_context_parts.append(mood_context)
+            if feedback_context:
+                system_context_parts.append(feedback_context)
             if tool_context:
                 system_context_parts.append(f"System data (use this to answer Jack's question):\n{tool_context}")
             system_context = "\n\n".join(system_context_parts) if system_context_parts else None
@@ -1292,6 +1305,52 @@ class ConversationOrchestrator(SentientService):
         source = message.get('source', 'unknown')
         self.tts_preferences[source] = enabled
         self.logger.info(f"TTS {'enabled' if enabled else 'disabled'} by {source}")
+
+    async def _handle_feedback(self, payload: dict):
+        """Store user thumbs up/down feedback in Redis."""
+        if not self.redis_client:
+            return
+        user_id = payload.get('user_id', 'web_user')
+        try:
+            key = f"feedback:{user_id}"
+            await self.redis_client.lpush(key, json.dumps(payload))
+            await self.redis_client.ltrim(key, 0, 19)  # Keep last 20 items
+            fb_type = payload.get('feedback', '?')
+            self.logger.info(f"Feedback stored for {user_id}: {fb_type}")
+        except Exception as e:
+            self.logger.error(f"Failed to store feedback: {e}")
+
+    async def _get_feedback_context(self, user_id: str) -> str:
+        """Build a feedback context string from recent user ratings."""
+        if not self.redis_client:
+            return ""
+        try:
+            key = f"feedback:{user_id}"
+            items = await self.redis_client.lrange(key, 0, 9)
+            if not items:
+                return ""
+            ups = 0
+            downs = 0
+            for raw in items:
+                try:
+                    entry = json.loads(raw)
+                    if entry.get('feedback') == 'up':
+                        ups += 1
+                    elif entry.get('feedback') == 'down':
+                        downs += 1
+                except Exception:
+                    pass
+            if ups == 0 and downs == 0:
+                return ""
+            parts = []
+            if ups > 0:
+                parts.append(f"{ups} positive")
+            if downs > 0:
+                parts.append(f"{downs} negative")
+            return f"[Response preferences: {', '.join(parts)} ratings from Jack recently.]"
+        except Exception as e:
+            self.logger.debug(f"Failed to read feedback context: {e}")
+            return ""
 
     async def _idle_timeout_monitor(self):
         """Monitor for idle conversations and clean up"""
