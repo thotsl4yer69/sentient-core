@@ -1,0 +1,27 @@
+[Unit]
+Description=Sentient Core - Whisper STT Service
+After=sentient-core.target
+PartOf=sentient-core.target
+
+[Service]
+Type=simple
+User=cortana
+Group=cortana
+WorkingDirectory=/home/cortana/sentient-core
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_VISIBLE_DEVICES=0
+EnvironmentFile=-/opt/sentient-core/config/sentient.env
+ExecStart=/home/cortana/sentient-core/.venv/bin/python3 /home/cortana/sentient-core/services/whisper_stt_server.py
+Restart=always
+RestartSec=10
+MemoryMax=3G
+TimeoutStartSec=60
+TimeoutStopSec=30
+StartLimitInterval=60
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentient-whisper-stt
+
+[Install]
+WantedBy=sentient-core.target

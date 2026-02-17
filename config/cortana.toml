@@ -1,0 +1,52 @@
+# Sentient Core Configuration - Single Source of Truth
+
+[mqtt]
+broker = "localhost"
+port = 1883
+username = "sentient"
+# password loaded from SENTIENT_MQTT_PASSWORD env var
+
+[redis]
+host = "localhost"
+port = 6379
+db = 0
+
+[ollama]
+host = "http://localhost:11434"
+model = "qwen2.5:1.5b"
+
+[whisper]
+service_topic = "sentient/stt/transcribe"
+
+[piper]
+service_topic = "sentient/tts/synthesize"
+
+[ntfy]
+server = "https://ntfy.sh"
+topic = "cortana-sentient-core"
+
+[wake_word]
+model = "hey_cortana"
+sensitivity = 0.5
+
+[conversation]
+max_history = 20
+idle_timeout = 1800
+
+[memory]
+port = 8001
+embedding_model = "all-MiniLM-L6-v2"
+
+[contemplation]
+port = 8002
+default_mode = "fast"
+
+[perception]
+port = 8003
+world_state_interval = 5.0
+
+[avatar]
+bridge_ws_port = 9001
+
+[web_chat]
+port = 3001

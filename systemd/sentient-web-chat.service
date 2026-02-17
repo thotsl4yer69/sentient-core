@@ -1,0 +1,21 @@
+[Unit]
+Description=Sentient Core - Web Chat Interface
+After=sentient-core.target
+PartOf=sentient-core.target
+
+[Service]
+Type=simple
+User=cortana
+Group=cortana
+WorkingDirectory=/opt/sentient-core
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/sentient-core/config/sentient.env
+ExecStart=/usr/bin/python3 /opt/sentient-core/interfaces/web_chat/server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentient-web-chat
+
+[Install]
+WantedBy=sentient-core.target

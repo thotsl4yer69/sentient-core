@@ -1,0 +1,22 @@
+[Unit]
+Description=Sentient Core - Piper TTS Service
+After=sentient-core.target
+PartOf=sentient-core.target
+
+[Service]
+Type=simple
+User=cortana
+Group=cortana
+WorkingDirectory=/home/cortana/sentient-core
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/sentient-core/config/sentient.env
+ExecStart=/usr/bin/python3 /home/cortana/sentient-core/services/piper_tts.py
+Restart=always
+RestartSec=10
+MemoryMax=1G
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentient-piper-tts
+
+[Install]
+WantedBy=sentient-core.target

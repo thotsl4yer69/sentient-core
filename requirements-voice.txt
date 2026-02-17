@@ -1,0 +1,18 @@
+# Sentient Core - Voice Interface Requirements
+
+# MQTT client with async support
+aiomqtt>=2.0.0
+paho-mqtt>=1.6.0
+
+# Audio processing
+PyAudio>=0.2.13
+webrtcvad>=2.0.10
+
+# Whisper STT
+faster-whisper>=1.0.0
+
+# NumPy for audio processing
+numpy>=1.24.0
+
+# Utilities
+python-dotenv>=1.0.0

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORTANA // SENTIENT CORE</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0a0e17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Cortana">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="stylesheet" href="static/styles.css?v=20260217g">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <!-- Syntax highlighting theme - cyber neon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body>
+    <!-- Scanline overlay -->
+    <div class="scanlines"></div>
+
+    <!-- Vignette effect -->
+    <div class="vignette"></div>
+
+    <!-- Main container -->
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-glitch" data-text="CORTANA">CORTANA</div>
+                    <div class="subtitle">SENTIENT NEURAL INTERFACE v1.0</div>
+                </div>
+
+                <div class="status-bar">
+                    <div class="status-item">
+                        <div class="status-label">NEURAL LINK</div>
+                        <div class="status-value" id="connection-status">
+                            <span class="status-dot status-connecting"></span>
+                            CONNECTING
+                        </div>
+                    </div>
+
+                    <div class="status-item">
+                        <div class="status-label">EMOTION STATE</div>
+                        <div class="status-value" id="emotion-status">
+                            <span class="emotion-indicator"></span>
+                            <span id="emotion-text">NEUTRAL</span>
+                        </div>
+                    </div>
+
+                    <div class="status-item">
+                        <div class="status-label">SYSTEM TIME</div>
+                        <div class="status-value" id="system-time">--:--:--</div>
+                    </div>
+
+                    <div class="status-item" style="display:flex;gap:6px;">
+                        <a href="/insights" class="btn-dashboard" title="Memory Insights" style="text-decoration:none;color:inherit;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+                                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 3a2 2 0 1 1-2 2 2 2 0 0 1 2-2zm3 11H9v-1a3 3 0 0 1 3-3 3 3 0 0 1 3 3z"/>
+                            </svg>
+                        </a>
+                        <button class="btn-dashboard" id="dashboard-toggle" title="Neural Dashboard">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="avatar-header">
+                <canvas id="avatar-canvas"></canvas>
+            </div>
+        </header>
+
+        <!-- Toast notification container -->
+        <div class="toast-container" id="toast-container"></div>
+
+        <!-- Neural Dashboard Panel -->
+        <aside class="neural-dashboard" id="neural-dashboard">
+            <div class="dashboard-header">
+                <h3 class="dashboard-title">NEURAL ACTIVITY</h3>
+                <button class="dashboard-close" id="dashboard-close">&times;</button>
+            </div>
+            <div class="dashboard-content">
+                <div class="dashboard-section">
+                    <div class="section-title">SERVICES</div>
+                    <div class="service-grid" id="service-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <div class="dashboard-section">
+                    <div class="section-title">SYSTEM</div>
+                    <div class="system-stats" id="system-stats">
+                        <div class="stat-row"><span class="stat-label">GPU</span><span class="stat-value" id="stat-gpu">--</span></div>
+                        <div class="stat-row"><span class="stat-label">RAM</span><span class="stat-value" id="stat-ram">--</span></div>
+                        <div class="stat-row"><span class="stat-label">DISK</span><span class="stat-value" id="stat-disk">--</span></div>
+                        <div class="stat-row"><span class="stat-label">UPTIME</span><span class="stat-value" id="stat-uptime">--</span></div>
+                    </div>
+                </div>
+                <div class="dashboard-section">
+                    <div class="section-title">EMOTION TRACE</div>
+                    <canvas id="emotion-canvas" width="280" height="60"></canvas>
+                </div>
+                <div class="dashboard-section">
+                    <div class="section-title">ACTIVITY LOG</div>
+                    <div class="activity-log" id="activity-log">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Chat area -->
+        <main class="chat-container">
+            <!-- Messages -->
+            <div class="messages" id="messages">
+                <!-- Messages will be inserted here -->
+            </div>
+
+            <!-- Thinking indicator -->
+            <div class="thinking-indicator" id="thinking-indicator" style="display: none;">
+                <div class="thinking-dots">
+                    <div class="thinking-icon">
+                        <div class="brain-pulse"></div>
+                    </div>
+                    <div class="thinking-text">
+                        <span class="thinking-label">CORTANA IS PROCESSING</span>
+                        <div class="thinking-stage" id="thinking-stage"></div>
+                    </div>
+                </div>
+                <div class="thinking-progress">
+                    <div class="thinking-progress-bar"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Input area -->
+        <footer class="input-area">
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <textarea
+                        id="message-input"
+                        placeholder="TRANSMIT MESSAGE TO CORTANA..."
+                        rows="1"
+                        maxlength="2000"
+                    ></textarea>
+                    <div class="char-counter">
+                        <span id="char-count">0</span>/2000
+                    </div>
+                </div>
+
+                <div class="input-controls">
+                    <button class="btn btn-voice" id="voice-btn" title="Voice Input">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </button>
+
+                    <button class="btn btn-tts" id="tts-btn" title="Toggle Voice Output">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                        </svg>
+                    </button>
+
+                    <button class="btn btn-send" id="send-btn" title="Send Message">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                        <span class="btn-text">TRANSMIT</span>
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Audio element for voice recording -->
+    <audio id="audio-player" style="display: none;"></audio>
+
+    <!-- Markdown rendering + syntax highlighting + sanitization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+
+    <!-- Scripts -->
+    <script src="static/avatar-hologram.js?v=20260217g"></script>
+    <script src="static/neural-bg.js?v=20260217g"></script>
+    <script src="static/app.js?v=20260217g"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+            console.log('[SW] Registered:', reg.scope);
+        }).catch(err => console.warn('[SW] Registration failed:', err));
+    }
+    </script>
+</body>
+</html>

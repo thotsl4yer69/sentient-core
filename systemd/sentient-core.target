@@ -1,0 +1,8 @@
+[Unit]
+Description=Sentient Core AI Companion System
+Requires=mosquitto.service redis-server.service ollama.service
+After=mosquitto.service redis-server.service ollama.service network.target
+StopWhenUnneeded=no
+
+[Install]
+WantedBy=multi-user.target

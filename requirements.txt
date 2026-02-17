@@ -1,0 +1,22 @@
+# Sentient Core - Memory System Requirements
+
+# Redis client with async support
+redis[hiredis]>=5.0.0
+
+# Semantic embeddings for memory search
+sentence-transformers>=2.2.0
+
+# MQTT client for event publishing
+paho-mqtt>=1.6.0
+
+# Async MQTT client for avatar bridge
+aiomqtt>=1.2.0
+
+# WebSocket server for browser clients
+websockets>=12.0
+
+# NumPy for vector operations
+numpy>=1.24.0
+
+# Optional: faster embeddings
+torch>=2.0.0

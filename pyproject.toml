@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "sentient-core"
+version = "2.0.0"
+description = "Sentient Core - AI Operating System"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.25.0",
+    "websockets>=12.0",
+    "pydantic>=2.0",
+    "aiomqtt>=2.0",
+    "paho-mqtt>=1.6",
+    "redis[hiredis]>=5.0",
+    "sentence-transformers>=2.2",
+    "numpy>=1.24",
+    "aiohttp>=3.9",
+    "tomli>=2.0;python_version<'3.11'",
+    "python-json-logger>=2.0",
+    "colorama>=0.4",
+]
+
+[project.optional-dependencies]
+voice = ["PyAudio>=0.2.13", "webrtcvad>=2.0.10", "faster-whisper>=0.10", "openwakeword>=0.6"]
+vision = ["ultralytics>=8.0", "opencv-python-headless>=4.8"]
+gpu = ["torch>=2.0"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21", "ruff>=0.1"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sentient*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120

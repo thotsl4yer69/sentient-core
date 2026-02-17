@@ -1,0 +1,25 @@
+[Unit]
+Description=Sentient Core Perception Layer
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+Type=simple
+User=cortana
+Group=cortana
+WorkingDirectory=/opt/sentient-core/services
+ExecStart=/usr/bin/python3 /opt/sentient-core/services/perception.py --broker localhost --port 1883 --interval 5.0
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

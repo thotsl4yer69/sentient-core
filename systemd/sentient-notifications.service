@@ -1,0 +1,24 @@
+[Unit]
+Description=Sentient Core - Notification Service (v2)
+After=sentient-core.target redis-server.service
+PartOf=sentient-core.target
+
+[Service]
+Type=simple
+User=cortana
+Group=cortana
+WorkingDirectory=/opt/sentient-core
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/sentient-core
+EnvironmentFile=-/opt/sentient-core/config/sentient.env
+ExecStart=/usr/bin/python3 -m sentient.services.notifications
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentient-notifications
+
+[Install]
+WantedBy=sentient-core.target

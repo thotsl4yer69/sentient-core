@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortana's Memory - Insights</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0a0e17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Cortana">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <style>
+        /* ==================== RESET & BASE ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --color-bg: #0a0a0f;
+            --color-bg-elevated: #12121a;
+            --color-bg-glass: rgba(18, 18, 26, 0.7);
+            --color-primary: #00d4ff;
+            --color-secondary: #ff00ff;
+            --color-text: #e0e0e0;
+            --color-text-dim: #a0a0a0;
+            --color-border: rgba(0, 212, 255, 0.2);
+            --color-success: #00ff88;
+            --color-warning: #ffaa00;
+            --glow-primary: 0 0 20px rgba(0, 212, 255, 0.5);
+            --glow-secondary: 0 0 20px rgba(255, 0, 255, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            overflow-x: hidden;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* ==================== NEURAL BACKGROUND ==================== */
+        #neural-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* ==================== LAYOUT ==================== */
+        .page-container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 80px 20px 40px;
+        }
+
+        /* ==================== NAV BAR ==================== */
+        .nav-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: var(--color-bg-glass);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--color-border);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 20px;
+        }
+
+        .nav-back {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--color-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: var(--color-primary);
+            font-size: 20px;
+        }
+
+        .nav-back:hover {
+            background: rgba(0, 212, 255, 0.2);
+            box-shadow: var(--glow-primary);
+            transform: translateX(-2px);
+        }
+
+        .nav-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--color-primary);
+            text-shadow: var(--glow-primary);
+            flex: 1;
+        }
+
+        .nav-badge {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* ==================== SECTIONS ==================== */
+        .section {
+            background: var(--color-bg-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--color-border);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            animation: fadeSlideIn 0.6s ease forwards;
+            opacity: 0;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 20px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        @keyframes fadeSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Stagger animation delays */
+        .section:nth-child(1) { animation-delay: 0.1s; }
+        .section:nth-child(2) { animation-delay: 0.2s; }
+        .section:nth-child(3) { animation-delay: 0.3s; }
+        .section:nth-child(4) { animation-delay: 0.4s; }
+        .section:nth-child(5) { animation-delay: 0.5s; }
+        .section:nth-child(6) { animation-delay: 0.6s; }
+        .section:nth-child(7) { animation-delay: 0.7s; }
+
+        /* ==================== RELATIONSHIP HERO ==================== */
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid var(--color-primary);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: rgba(0, 212, 255, 0.1);
+            box-shadow: var(--glow-primary);
+            transform: translateY(-4px);
+        }
+
+        .stat-value {
+            font-size: 42px;
+            font-weight: 700;
+            color: var(--color-primary);
+            text-shadow: var(--glow-primary);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--color-text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .milestones {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .milestone-badge {
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border: 2px solid;
+            transition: all 0.3s ease;
+        }
+
+        .milestone-badge.achieved {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+            box-shadow: var(--glow-primary);
+        }
+
+        .milestone-badge.locked {
+            background: rgba(80, 80, 90, 0.1);
+            border-color: rgba(80, 80, 90, 0.3);
+            color: rgba(160, 160, 160, 0.5);
+            opacity: 0.5;
+        }
+
+        /* ==================== HEATMAP ==================== */
+        .heatmap-container {
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .heatmap {
+            display: inline-grid;
+            grid-template-columns: 40px repeat(52, 10px);
+            grid-template-rows: 30px repeat(7, 10px);
+            gap: 2px;
+            min-width: 600px;
+        }
+
+        .heatmap-day-label {
+            grid-column: 1;
+            font-size: 11px;
+            color: var(--color-text-dim);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+        }
+
+        .heatmap-month-label {
+            grid-row: 1;
+            font-size: 11px;
+            color: var(--color-text-dim);
+            display: flex;
+            align-items: center;
+        }
+
+        .heatmap-cell {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .heatmap-cell:hover {
+            transform: scale(1.4);
+            z-index: 10;
+        }
+
+        .heatmap-cell[data-count="0"] { background: transparent; border-color: rgba(80, 80, 90, 0.3); }
+        .heatmap-cell[data-level="1"] { background: rgba(0, 212, 255, 0.2); }
+        .heatmap-cell[data-level="2"] { background: rgba(0, 212, 255, 0.4); }
+        .heatmap-cell[data-level="3"] { background: rgba(0, 212, 255, 0.6); }
+        .heatmap-cell[data-level="4"] { background: rgba(0, 212, 255, 0.8); box-shadow: 0 0 8px rgba(0, 212, 255, 0.6); }
+
+        .heatmap-tooltip {
+            position: absolute;
+            background: var(--color-bg-elevated);
+            border: 1px solid var(--color-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        /* ==================== ACTIVITY PATTERN ==================== */
+        .activity-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 200px;
+            padding: 20px 0;
+        }
+
+        .activity-bar-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .activity-bar {
+            width: 100%;
+            background: linear-gradient(180deg, var(--color-primary), rgba(0, 212, 255, 0.3));
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .activity-bar:hover {
+            filter: brightness(1.3);
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.8);
+        }
+
+        .activity-bar-label {
+            font-size: 10px;
+            color: var(--color-text-dim);
+            writing-mode: horizontal-tb;
+        }
+
+        /* ==================== CORE MEMORY ==================== */
+        .memory-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .memory-card {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            padding: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .memory-card:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--color-primary);
+            box-shadow: var(--glow-primary);
+            transform: translateY(-2px);
+        }
+
+        .memory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .memory-category {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .memory-badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .memory-badge.learned {
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--color-success);
+            border: 1px solid var(--color-success);
+        }
+
+        .memory-badge.system {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--color-warning);
+            border: 1px solid var(--color-warning);
+        }
+
+        .memory-value {
+            font-size: 14px;
+            color: var(--color-text);
+            line-height: 1.5;
+        }
+
+        .memory-empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--color-text-dim);
+            font-style: italic;
+        }
+
+        /* ==================== CONVERSATION BROWSER ==================== */
+        .conversation-search {
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            color: var(--color-text);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: var(--glow-primary);
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .search-input::placeholder {
+            color: var(--color-text-dim);
+        }
+
+        .conversation-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .conversation-item {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .conversation-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--color-primary);
+            transform: translateX(4px);
+        }
+
+        .conversation-item.expanded {
+            background: rgba(0, 212, 255, 0.15);
+            border-color: var(--color-primary);
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .conversation-time {
+            font-size: 12px;
+            color: var(--color-text-dim);
+        }
+
+        .conversation-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: rgba(255, 0, 255, 0.2);
+            color: var(--color-secondary);
+            border: 1px solid var(--color-secondary);
+        }
+
+        .conversation-preview {
+            font-size: 14px;
+            color: var(--color-text);
+            line-height: 1.6;
+            margin-bottom: 6px;
+        }
+
+        .conversation-preview strong {
+            color: var(--color-primary);
+        }
+
+        .conversation-full {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--color-border);
+        }
+
+        .conversation-item.expanded .conversation-full {
+            display: block;
+        }
+
+        .conversation-full-text {
+            font-size: 13px;
+            color: var(--color-text);
+            line-height: 1.7;
+            margin-bottom: 8px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .pagination-btn {
+            padding: 10px 20px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--color-primary);
+            border-radius: 8px;
+            color: var(--color-primary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: rgba(0, 212, 255, 0.2);
+            box-shadow: var(--glow-primary);
+            transform: scale(1.05);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .pagination-info {
+            font-size: 14px;
+            color: var(--color-text-dim);
+        }
+
+        /* ==================== TAG CLOUD ==================== */
+        .tag-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            padding: 20px 0;
+        }
+
+        .tag-cloud-item {
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255, 0, 255, 0.1);
+            border: 1px solid var(--color-secondary);
+            color: var(--color-secondary);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tag-cloud-item:hover {
+            background: rgba(255, 0, 255, 0.2);
+            box-shadow: var(--glow-secondary);
+            transform: scale(1.1);
+        }
+
+        /* Tag sizes based on frequency */
+        .tag-cloud-item[data-frequency="1"] { font-size: 12px; }
+        .tag-cloud-item[data-frequency="2"] { font-size: 14px; }
+        .tag-cloud-item[data-frequency="3"] { font-size: 16px; }
+        .tag-cloud-item[data-frequency="4"] { font-size: 18px; }
+        .tag-cloud-item[data-frequency="5"] { font-size: 20px; }
+
+        /* ==================== LOADING STATE ==================== */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--color-text-dim);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 212, 255, 0.2);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ==================== RESPONSIVE ==================== */
+        @media (max-width: 768px) {
+            .page-container {
+                padding: 80px 12px 20px;
+            }
+
+            .section {
+                padding: 20px;
+            }
+
+            .hero-stats {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .stat-value {
+                font-size: 32px;
+            }
+
+            .memory-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-title {
+                font-size: 16px;
+                letter-spacing: 1px;
+            }
+
+            .nav-badge {
+                font-size: 11px;
+                padding: 4px 10px;
+            }
+
+            .heatmap {
+                grid-template-columns: 30px repeat(52, 8px);
+                grid-template-rows: 25px repeat(7, 8px);
+                gap: 1px;
+            }
+
+            .heatmap-cell {
+                width: 8px;
+                height: 8px;
+            }
+
+            .activity-chart {
+                height: 150px;
+            }
+
+            .activity-bar-label {
+                font-size: 9px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Neural Background Canvas -->
+    <canvas id="neural-canvas"></canvas>
+
+    <!-- Navigation Bar -->
+    <div class="nav-bar">
+        <a href="/" class="nav-back">←</a>
+        <div class="nav-title">CORTANA'S MEMORY</div>
+        <div class="nav-badge" id="memory-count">Loading...</div>
+    </div>
+
+    <!-- Page Container -->
+    <div class="page-container">
+        <!-- Relationship Hero Section -->
+        <div class="section">
+            <div class="section-title">Relationship Timeline</div>
+            <div class="hero-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="days-together">0</div>
+                    <div class="stat-label">Days Together</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-conversations">0</div>
+                    <div class="stat-label">Conversations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="facts-known">0</div>
+                    <div class="stat-label">Facts Known</div>
+                </div>
+            </div>
+            <div class="milestones" id="milestones"></div>
+        </div>
+
+        <!-- Interaction Heatmap -->
+        <div class="section">
+            <div class="section-title">Activity Heatmap</div>
+            <div class="heatmap-container">
+                <div class="heatmap" id="heatmap"></div>
+            </div>
+        </div>
+
+        <!-- Activity Pattern -->
+        <div class="section">
+            <div class="section-title">Daily Activity Pattern</div>
+            <div class="activity-chart" id="activity-chart"></div>
+        </div>
+
+        <!-- Core Memory -->
+        <div class="section">
+            <div class="section-title">Core Memory</div>
+            <div class="memory-grid" id="core-memory"></div>
+        </div>
+
+        <!-- Tag Cloud -->
+        <div class="section">
+            <div class="section-title">Conversation Topics</div>
+            <div class="tag-cloud" id="tag-cloud"></div>
+        </div>
+
+        <!-- Conversation Browser -->
+        <div class="section">
+            <div class="section-title">Conversation History</div>
+            <div class="conversation-search">
+                <input type="text" class="search-input" id="search-input" placeholder="Search conversations...">
+            </div>
+            <div class="conversation-list" id="conversation-list"></div>
+            <div class="pagination">
+                <button class="pagination-btn" id="prev-btn" disabled>Previous</button>
+                <div class="pagination-info" id="pagination-info">Page 1</div>
+                <button class="pagination-btn" id="next-btn">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip for heatmap -->
+    <div class="heatmap-tooltip" id="heatmap-tooltip"></div>
+
+    <!-- Neural Background Script -->
+    <script src="static/neural-bg.js?v=20260217g"></script>
+
+    <!-- Main Application Script -->
+    <script>
+        // ==================== STATE ====================
+        let currentPage = 1;
+        const pageLimit = 20;
+        let totalPages = 1;
+        let searchQuery = '';
+        let allData = {};
+
+        // ==================== INITIALIZATION ====================
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Set neural background to calm idle state
+            if (window.setNeuralMood) {
+                window.setNeuralMood('calm');
+            }
+
+            // Load all data in parallel
+            await Promise.all([
+                loadRelationshipData(),
+                loadStatsData(),
+                loadConversations(1),
+                loadCoreMemory()
+            ]);
+        });
+
+        // ==================== DATA LOADING ====================
+        async function loadRelationshipData() {
+            try {
+                const response = await fetch('/api/insights/relationship');
+                const data = await response.json();
+
+                document.getElementById('days-together').textContent = data.relationship_days || 0;
+                document.getElementById('total-conversations').textContent = data.total_conversations || 0;
+                document.getElementById('facts-known').textContent = Object.keys(data.core_facts || {}).length;
+                document.getElementById('memory-count').textContent = `${data.total_conversations || 0} memories`;
+
+                renderMilestones(data.milestones || [], data.total_conversations || 0);
+            } catch (error) {
+                console.error('Failed to load relationship data:', error);
+            }
+        }
+
+        async function loadStatsData() {
+            try {
+                const response = await fetch('/api/insights/stats');
+                const data = await response.json();
+                allData.stats = data;
+
+                renderHeatmap(data.interactions_by_day || {});
+                renderActivityChart(data.interactions_by_hour || {});
+                renderTagCloud(data.top_tags || []);
+            } catch (error) {
+                console.error('Failed to load stats data:', error);
+            }
+        }
+
+        async function loadConversations(page) {
+            try {
+                const url = searchQuery
+                    ? `/api/insights/search?q=${encodeURIComponent(searchQuery)}`
+                    : `/api/insights/recent?page=${page}&limit=${pageLimit}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (searchQuery) {
+                    renderConversations(data.results || []);
+                    totalPages = Math.ceil(data.total_matches / pageLimit);
+                } else {
+                    renderConversations(data.conversations || []);
+                    totalPages = data.total_pages || 1;
+                    currentPage = data.page || 1;
+                }
+
+                updatePagination();
+            } catch (error) {
+                console.error('Failed to load conversations:', error);
+                document.getElementById('conversation-list').innerHTML =
+                    '<div class="loading">Failed to load conversations</div>';
+            }
+        }
+
+        async function loadCoreMemory() {
+            try {
+                const response = await fetch('/api/insights/relationship');
+                const data = await response.json();
+                renderCoreMemory(data.core_facts || {});
+            } catch (error) {
+                console.error('Failed to load core memory:', error);
+            }
+        }
+
+        // ==================== RENDERING ====================
+        function renderMilestones(milestones, totalConversations) {
+            const container = document.getElementById('milestones');
+            const thresholds = [1, 10, 50, 100, 500, 1000, 5000, 10000, 25000];
+
+            container.innerHTML = thresholds.map(threshold => {
+                const achieved = totalConversations >= threshold;
+                const className = achieved ? 'achieved' : 'locked';
+                return `<div class="milestone-badge ${className}">${threshold}${threshold >= 1000 ? 'k'.repeat(Math.floor(Math.log10(threshold) - 2)) : ''} Conversations</div>`;
+            }).join('');
+        }
+
+        function renderHeatmap(interactionsByDay) {
+            const container = document.getElementById('heatmap');
+            container.innerHTML = '';
+
+            // Create date range (52 weeks back from today)
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(startDate.getDate() - 364);
+
+            // Month labels
+            const monthLabel = document.createElement('div');
+            monthLabel.className = 'heatmap-month-label';
+            monthLabel.style.gridColumn = '1';
+            container.appendChild(monthLabel);
+
+            let currentMonth = -1;
+            for (let week = 0; week < 52; week++) {
+                const weekDate = new Date(startDate);
+                weekDate.setDate(weekDate.getDate() + (week * 7));
+                const month = weekDate.getMonth();
+
+                if (month !== currentMonth) {
+                    const label = document.createElement('div');
+                    label.className = 'heatmap-month-label';
+                    label.style.gridColumn = week + 2;
+                    label.textContent = weekDate.toLocaleDateString('en-US', { month: 'short' });
+                    container.appendChild(label);
+                    currentMonth = month;
+                }
+            }
+
+            // Day labels
+            const days = ['Mon', 'Wed', 'Fri'];
+            [1, 3, 5].forEach((dayIndex, i) => {
+                const label = document.createElement('div');
+                label.className = 'heatmap-day-label';
+                label.style.gridRow = dayIndex + 2;
+                label.textContent = days[i];
+                container.appendChild(label);
+            });
+
+            // Generate cells
+            const maxCount = Math.max(...Object.values(interactionsByDay), 1);
+
+            for (let week = 0; week < 52; week++) {
+                for (let day = 0; day < 7; day++) {
+                    const date = new Date(startDate);
+                    date.setDate(date.getDate() + (week * 7) + day);
+
+                    const dateStr = date.toISOString().split('T')[0];
+                    const count = interactionsByDay[dateStr] || 0;
+                    const level = count === 0 ? 0 : Math.min(4, Math.ceil((count / maxCount) * 4));
+
+                    const cell = document.createElement('div');
+                    cell.className = 'heatmap-cell';
+                    cell.dataset.count = count;
+                    cell.dataset.level = level;
+                    cell.dataset.date = dateStr;
+                    cell.style.gridColumn = week + 2;
+                    cell.style.gridRow = day + 2;
+
+                    cell.addEventListener('mouseenter', showHeatmapTooltip);
+                    cell.addEventListener('mouseleave', hideHeatmapTooltip);
+
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        function showHeatmapTooltip(event) {
+            const tooltip = document.getElementById('heatmap-tooltip');
+            const count = event.target.dataset.count;
+            const date = new Date(event.target.dataset.date);
+            const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+            tooltip.textContent = `${dateStr}: ${count} conversation${count !== '1' ? 's' : ''}`;
+            tooltip.style.display = 'block';
+            tooltip.style.left = event.pageX + 10 + 'px';
+            tooltip.style.top = event.pageY - 30 + 'px';
+        }
+
+        function hideHeatmapTooltip() {
+            document.getElementById('heatmap-tooltip').style.display = 'none';
+        }
+
+        function renderActivityChart(interactionsByHour) {
+            const container = document.getElementById('activity-chart');
+            container.innerHTML = '';
+
+            const hours = Array.from({ length: 24 }, (_, i) => i);
+            const maxCount = Math.max(...hours.map(h => interactionsByHour[h] || 0), 1);
+
+            const labelHours = [0, 3, 6, 9, 12, 15, 18, 21];
+
+            hours.forEach(hour => {
+                const count = interactionsByHour[hour] || 0;
+                const heightPercent = (count / maxCount) * 100;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'activity-bar-wrapper';
+
+                const bar = document.createElement('div');
+                bar.className = 'activity-bar';
+                bar.style.height = heightPercent + '%';
+                bar.title = `${hour}:00 - ${count} conversations`;
+
+                const label = document.createElement('div');
+                label.className = 'activity-bar-label';
+                if (labelHours.includes(hour)) {
+                    label.textContent = hour === 0 ? '12am' : hour < 12 ? `${hour}am` : hour === 12 ? '12pm' : `${hour - 12}pm`;
+                }
+
+                wrapper.appendChild(bar);
+                wrapper.appendChild(label);
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderCoreMemory(coreMemory) {
+            const container = document.getElementById('core-memory');
+
+            if (!coreMemory || Object.keys(coreMemory).length === 0) {
+                container.innerHTML = '<div class="memory-empty">No core memories yet</div>';
+                return;
+            }
+
+            container.innerHTML = Object.entries(coreMemory).map(([key, value]) => {
+                const category = key.split('.')[0].replace(/_/g, ' ').toUpperCase();
+                const isSystem = key.startsWith('system.');
+                const badge = isSystem ? 'system' : 'learned';
+                const badgeText = isSystem ? 'System' : 'Learned';
+
+                return `
+                    <div class="memory-card">
+                        <div class="memory-header">
+                            <div class="memory-category">${category}</div>
+                            <div class="memory-badge ${badge}">${badgeText}</div>
+                        </div>
+                        <div class="memory-value">${escapeHtml(value)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTagCloud(topTags) {
+            const container = document.getElementById('tag-cloud');
+
+            if (!topTags || topTags.length === 0) {
+                container.innerHTML = '<div class="loading">No tags yet</div>';
+                return;
+            }
+
+            // Determine frequency tiers (1-5)
+            const maxCount = Math.max(...topTags.map(t => t.count), 1);
+
+            container.innerHTML = topTags.map(tag => {
+                const frequency = Math.min(5, Math.ceil((tag.count / maxCount) * 5));
+                return `<div class="tag-cloud-item" data-frequency="${frequency}" onclick="searchByTag('${escapeHtml(tag.tag)}')">${escapeHtml(tag.tag)} (${tag.count})</div>`;
+            }).join('');
+        }
+
+        function renderConversations(conversations) {
+            const container = document.getElementById('conversation-list');
+
+            if (!conversations || conversations.length === 0) {
+                container.innerHTML = '<div class="loading">No conversations found</div>';
+                return;
+            }
+
+            container.innerHTML = conversations.map((conv, index) => {
+                const timestamp = new Date(conv.timestamp);
+                const relativeTime = getRelativeTime(timestamp);
+                const userPreview = truncate(conv.user_msg, 100);
+                const assistantPreview = truncate(conv.assistant_msg, 100);
+                const tags = conv.tags || [];
+
+                return `
+                    <div class="conversation-item" onclick="toggleConversation(${index})">
+                        <div class="conversation-header">
+                            <div class="conversation-time">${relativeTime}</div>
+                            <div class="conversation-tags">
+                                ${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+                            </div>
+                        </div>
+                        <div class="conversation-preview">
+                            <strong>Jack:</strong> ${escapeHtml(userPreview)}
+                        </div>
+                        <div class="conversation-preview">
+                            <strong>Cortana:</strong> ${escapeHtml(assistantPreview)}
+                        </div>
+                        <div class="conversation-full">
+                            <div class="conversation-full-text">
+                                <strong>Jack:</strong> ${escapeHtml(conv.user_msg)}
+                            </div>
+                            <div class="conversation-full-text">
+                                <strong>Cortana:</strong> ${escapeHtml(conv.assistant_msg)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updatePagination() {
+            document.getElementById('prev-btn').disabled = currentPage <= 1;
+            document.getElementById('next-btn').disabled = currentPage >= totalPages;
+            document.getElementById('pagination-info').textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+
+        // ==================== EVENT HANDLERS ====================
+        function toggleConversation(index) {
+            const items = document.querySelectorAll('.conversation-item');
+            if (items[index]) {
+                items[index].classList.toggle('expanded');
+            }
+        }
+
+        function searchByTag(tag) {
+            document.getElementById('search-input').value = tag;
+            searchQuery = tag;
+            currentPage = 1;
+            loadConversations(1);
+        }
+
+        document.getElementById('search-input').addEventListener('input', debounce((event) => {
+            searchQuery = event.target.value.trim();
+            currentPage = 1;
+            loadConversations(1);
+        }, 500));
+
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadConversations(currentPage);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadConversations(currentPage);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+
+        // ==================== UTILITIES ====================
+        function getRelativeTime(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+            if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function truncate(str, maxLen) {
+            if (!str) return '';
+            return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>

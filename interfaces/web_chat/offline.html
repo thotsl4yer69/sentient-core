@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORTANA // OFFLINE</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0a0e17">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0e17;
+            color: #00d4ff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+        .container {
+            padding: 2rem;
+        }
+        .hex {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 2rem;
+            position: relative;
+        }
+        .hex svg {
+            width: 100%;
+            height: 100%;
+        }
+        h1 {
+            font-size: 1.5rem;
+            letter-spacing: 0.3em;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+        p {
+            color: #4a9eff;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: #ff6b6b;
+        }
+        .retry-btn {
+            margin-top: 1.5rem;
+            padding: 0.75rem 2rem;
+            background: transparent;
+            border: 1px solid #00d4ff;
+            color: #00d4ff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        .retry-btn:hover {
+            background: rgba(0, 212, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hex">
+            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="60,5 110,32 110,88 60,115 10,88 10,32" stroke="#00d4ff" stroke-width="2" fill="none" opacity="0.5"/>
+                <circle cx="60" cy="60" r="20" stroke="#00d4ff" stroke-width="1.5" fill="none" opacity="0.3"/>
+                <circle cx="60" cy="60" r="5" fill="#00d4ff" opacity="0.5"/>
+            </svg>
+        </div>
+        <h1>Neural Link Severed</h1>
+        <p>Unable to establish connection to Sentient Core. The system appears to be offline or unreachable.</p>
+        <div class="status">SYSTEM STATUS: DISCONNECTED</div>
+        <button class="retry-btn" onclick="location.reload()">Retry Connection</button>
+    </div>
+</body>
+</html>

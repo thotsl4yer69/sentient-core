@@ -1,0 +1,18 @@
+[Unit]
+Description=Sentient Core - Avatar Bridge Service
+After=network.target mosquitto.service redis-server.service
+Wants=mosquitto.service redis-server.service
+
+[Service]
+Type=simple
+User=cortana
+WorkingDirectory=/opt/sentient-core
+ExecStart=/usr/bin/python3 /opt/sentient-core/services/avatar_bridge.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# Proactive Behavior Engine Dependencies
+
+# Async Redis client
+redis>=5.0.0
+
+# MQTT client (async)
+aiomqtt>=2.0.0
+
+# HTTP client for API calls
+aiohttp>=3.9.0
+
+# Standard library (no install needed, listed for reference)
+# asyncio
+# json
+# logging
+# time
+# random
+# dataclasses
+# datetime
+# typing
+# enum
