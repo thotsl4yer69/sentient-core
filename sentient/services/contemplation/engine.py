@@ -866,7 +866,8 @@ class ContemplationEngine:
     async def _fast_mode_response(
         self,
         input_text: str,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        system_context: Optional[str] = None
     ) -> str:
         """
         Fast mode: Single LLM call with full personality + world state context.
@@ -880,6 +881,9 @@ class ContemplationEngine:
             conversation_history=history_text,
             current_time=datetime.now().strftime("%I:%M %p, %A %B %d, %Y")
         )
+
+        if system_context:
+            prompt = f"{system_context}\n\n{prompt}"
 
         response = await self.ollama.generate(
             model=self.synthesis_model,
@@ -895,7 +899,8 @@ class ContemplationEngine:
     async def _synthesize_response(
         self,
         input_text: str,
-        perspectives: Dict[str, VoicePerspective]
+        perspectives: Dict[str, VoicePerspective],
+        system_context: Optional[str] = None
     ) -> str:
         """Synthesize all voice perspectives into unified response"""
         prompt = SYNTHESIS_PROMPT.format(
@@ -907,6 +912,9 @@ class ContemplationEngine:
             memory=perspectives[Voice.MEMORY.value].content,
             personality_context=self.personality_prompt
         )
+
+        if system_context:
+            prompt = f"{system_context}\n\n{prompt}"
 
         response = await self.ollama.generate(
             model=self.synthesis_model,
@@ -1033,7 +1041,8 @@ class ContemplationEngine:
         self,
         input_text: str,
         input_type: InputType = InputType.TEXT,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        system_context: Optional[str] = None
     ) -> ContemplationResult:
         """
         Main contemplation cycle.
@@ -1071,7 +1080,7 @@ class ContemplationEngine:
         if self.fast_mode:
             # Fast mode: Single-voice processing
             perspectives = {}
-            synthesized = await self._fast_mode_response(input_text, conversation_history)
+            synthesized = await self._fast_mode_response(input_text, conversation_history, system_context=system_context)
         else:
             # Full mode: Multi-voice processing
             # Generate voice perspectives
@@ -1082,7 +1091,7 @@ class ContemplationEngine:
                 logger.debug(f"  {voice_name}: {perspective.content}")
 
             # Synthesize response
-            synthesized = await self._synthesize_response(input_text, perspectives)
+            synthesized = await self._synthesize_response(input_text, perspectives, system_context=system_context)
 
         # Add hesitations
         with_hesitations = self._add_natural_hesitations(synthesized)

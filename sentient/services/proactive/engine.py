@@ -92,6 +92,20 @@ class ProactiveBehaviorEngine(SentientService):
     Evaluates triggers and initiates interactions naturally.
     """
 
+    # Mood-trigger affinity: which triggers align with which moods
+    MOOD_TRIGGER_AFFINITY = {
+        'joy': [TriggerType.EXCITEMENT, TriggerType.STREAK_TRACKER, TriggerType.MEMORY_FOLLOWUP],
+        'curiosity': [TriggerType.CURIOSITY, TriggerType.LEARNING_MOMENT, TriggerType.CONVERSATION_RECAP],
+        'affection': [TriggerType.CARE, TriggerType.MEMORY_FOLLOWUP, TriggerType.FIRST_MORNING_GREETING],
+        'sadness': [TriggerType.CARE, TriggerType.MEMORY_FOLLOWUP],
+        'anger': [TriggerType.SYSTEM_OBSERVATION],  # stay practical when frustrated
+        'surprise': [TriggerType.CURIOSITY, TriggerType.EXCITEMENT],
+        'fear': [TriggerType.CARE, TriggerType.SYSTEM_OBSERVATION],
+        'confidence': [TriggerType.STREAK_TRACKER, TriggerType.EXCITEMENT, TriggerType.LEARNING_MOMENT],
+        'playful': [TriggerType.BOREDOM, TriggerType.IDLE_THOUGHT, TriggerType.NIGHT_OWL],
+        'neutral': [],  # no boost
+    }
+
     def __init__(self):
         """Initialize proactive behavior engine"""
         super().__init__(name="proactive", http_port=None)
@@ -2297,6 +2311,16 @@ class ProactiveBehaviorEngine(SentientService):
         except Exception as e:
             self.logger.error(f"Error delivering notification: {e}")
 
+    async def _get_current_mood(self) -> Optional[dict]:
+        """Get current mood from Redis."""
+        try:
+            raw = await self.redis_client.get("sentient:cortana:mood")
+            if raw:
+                return json.loads(raw)
+        except Exception as e:
+            self.logger.debug(f"Could not read mood: {e}")
+        return None
+
     async def evaluation_loop(self):
         """
         Main evaluation loop - checks triggers every 30 seconds.
@@ -2332,21 +2356,42 @@ class ProactiveBehaviorEngine(SentientService):
                     return_exceptions=True
                 )
 
-                # Process results
+                # Process results — collect all candidates, then pick mood-aligned one
+                candidates = []
                 for (trigger_name, _), result in zip(trigger_evaluations, results):
                     if isinstance(result, Exception):
                         self.logger.error(f"Error evaluating {trigger_name} trigger: {result}")
                         continue
-
                     if result is not None:
                         self.logger.info(f"{trigger_name} trigger activated with confidence {result['confidence']:.2f}")
+                        candidates.append(result)
 
-                        # Generate proactive message
-                        message = await self.generate_proactive_message(result)
+                if candidates:
+                    selected = None
 
-                        if message:
-                            # Deliver message
-                            await self.deliver_message(message)
+                    if len(candidates) == 1:
+                        selected = candidates[0]
+                    else:
+                        # Mood-based selection: prefer triggers that align with current mood
+                        mood = await self._get_current_mood()
+                        if mood:
+                            primary_mood = mood.get('emotion', 'neutral')
+                            affine_triggers = self.MOOD_TRIGGER_AFFINITY.get(primary_mood, [])
+                            aligned = [r for r in candidates if r.get('trigger_type') in affine_triggers]
+                            if aligned:
+                                self.logger.info(
+                                    f"Mood alignment: {primary_mood} mood boosted {aligned[0].get('trigger_type')}"
+                                    f" over {len(candidates) - len(aligned)} other candidates"
+                                )
+                                selected = aligned[0]
+
+                        if selected is None:
+                            selected = candidates[0]
+
+                    # Generate and deliver the selected proactive message
+                    message = await self.generate_proactive_message(selected)
+                    if message:
+                        await self.deliver_message(message)
 
                 # Wait 30 seconds before next evaluation
                 await asyncio.sleep(30)

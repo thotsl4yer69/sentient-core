@@ -279,6 +279,59 @@ class SystemTools:
         ],
     }
 
+    # =================================================================
+    # CHAIN PATTERNS
+    # =================================================================
+
+    CHAIN_PATTERNS = {
+        'full_diagnostic': {
+            'patterns': [r'full\s*diagnostic', r'check\s*everything', r'health\s*check\s*all', r'what\'?s\s*wrong\s*with\s*(you|cortana|the\s*system)'],
+            'steps': [
+                {'category': 'system_info', 'command': 'memory', 'label': 'System Resources'},
+                {'category': 'system_info', 'command': 'gpu_status', 'label': 'GPU Status'},
+                {'category': 'service_status', 'command': 'list_services', 'label': 'Service Health'},
+                {'category': 'system_info', 'command': 'disk', 'label': 'Disk Usage'},
+                {'category': 'network', 'command': 'wifi_info', 'label': 'Network'},
+            ]
+        },
+        'fix_service': {
+            'patterns': [r'fix\s+(?:the\s+)?(\w+)\s+service', r'restart.*if.*down', r'recover\s+(\w+)'],
+            'steps': [
+                {'category': 'service_status', 'command': 'check_service', 'label': 'Check Status'},
+                {'category': 'service_control', 'command': 'restart_service', 'label': 'Restart Service', 'condition': 'previous_contains:inactive|failed|dead'},
+                {'category': 'service_status', 'command': 'check_service', 'label': 'Verify Recovery'},
+            ]
+        },
+        'disk_cleanup': {
+            'patterns': [r'clean\s*up\s*(the\s+)?disk', r'free\s*(up\s+)?(some\s+)?space', r'disk\s*is\s*(getting\s+)?full'],
+            'steps': [
+                {'category': 'system_info', 'command': 'disk', 'label': 'Current Disk Usage'},
+                {'category': 'log_viewer', 'command': 'service_log', 'label': 'Check Log Sizes'},
+                {'category': 'system_info', 'command': 'memory', 'label': 'Memory Status'},
+            ]
+        },
+        'network_check': {
+            'patterns': [r'full\s*network\s*(check|scan|status)', r'who\'?s\s*on\s*(my|the)\s*network', r'network\s*diagnostic'],
+            'steps': [
+                {'category': 'network', 'command': 'wifi_info', 'label': 'Network Interface'},
+                {'category': 'network_scan', 'command': 'connected_devices', 'label': 'Connected Devices'},
+            ]
+        },
+        'self_check': {
+            'patterns': [
+                r'run\s+a?\s*self\s*check',
+                r'system\s+self\s*check',
+                r'are\s+(?:all\s+)?(?:your\s+)?(?:services|systems)\s+(?:ok|running|working)',
+                r'check\s+(?:on\s+)?yourself'
+            ],
+            'steps': [
+                {'category': 'self_awareness', 'command': 'my_mood', 'label': 'Current Mood'},
+                {'category': 'self_awareness', 'command': 'my_uptime', 'label': 'Service Uptimes'},
+                {'category': 'system_info', 'command': 'gpu_status', 'label': 'GPU Health'},
+            ]
+        },
+    }
+
     # Emotion name mapping for avatar mood
     EMOTION_MAP = {
         "happy": "happy", "joy": "happy", "glad": "happy", "cheerful": "happy",
@@ -325,6 +378,41 @@ class SystemTools:
                         return (category, command_name)
 
         return None
+
+    def detect_chain(self, user_message: str) -> Optional[Tuple[str, dict]]:
+        """Detect if user message triggers a multi-step command chain."""
+        msg_lower = user_message.lower()
+        for chain_name, chain_def in self.CHAIN_PATTERNS.items():
+            for pattern in chain_def['patterns']:
+                if re.search(pattern, msg_lower):
+                    logger.info(f"Detected chain intent: {chain_name}")
+                    return (chain_name, chain_def)
+        return None
+
+    async def execute_chain(self, chain_name: str, chain_def: dict, user_message: str = "") -> str:
+        """Execute a multi-step command chain, collecting results."""
+        results = []
+        previous_output = ""
+
+        for i, step in enumerate(chain_def['steps'], 1):
+            # Check condition if present
+            condition = step.get('condition', '')
+            if condition.startswith('previous_contains:'):
+                check_terms = condition.split(':', 1)[1].split('|')
+                if not any(term in previous_output.lower() for term in check_terms):
+                    results.append(f"[{step['label']}] Skipped (not needed)")
+                    continue
+
+            try:
+                output = await self.execute(step['category'], step['command'], user_message)
+                previous_output = output
+                results.append(f"[{step['label']}]\n{output}")
+            except Exception as e:
+                results.append(f"[{step['label']}] Error: {str(e)}")
+                previous_output = str(e)
+
+        header = f"=== Chain: {chain_name.replace('_', ' ').title()} ({len(chain_def['steps'])} steps) ==="
+        return f"{header}\n\n" + "\n\n".join(results)
 
     # =================================================================
     # EXECUTION

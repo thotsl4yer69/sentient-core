@@ -193,7 +193,8 @@ async def generate_response(request: GenerateRequest):
         result: ContemplationResult = await engine.contemplate(
             input_text=request.input,
             input_type=InputType.TEXT,
-            conversation_history=request.history or []
+            conversation_history=request.history or [],
+            system_context=request.system_context
         )
 
         # Convert voices to response format

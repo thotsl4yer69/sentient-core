@@ -499,12 +499,31 @@ class ConversationOrchestrator(SentientService):
             self.logger.error(f"Failed to retrieve world state: {e}")
             return {}
 
+    # Compiled regex patterns for deep contemplation detection
+    _DEEP_PATTERNS = re.compile(
+        r"i(?:'m| am) (?:stressed|worried|sad|lonely|scared|struggling)|"
+        r"i feel\b|"
+        r"how should i\b|what should i do\b|am i doing the right|"
+        r"what do you think about\b|i need advice\b|help me understand\b|"
+        r"meaning of\b|what is consciousness\b|do you think\b|"
+        r"what'?s the point\b|why do we\b|purpose of life\b|what matters\b|"
+        r"tell me about yourself\b|what do you really think\b|"
+        r"be honest with me\b|your honest opinion\b|what are you feeling\b|"
+        r"do you care about me\b|are we friends\b|what am i to you\b|do you love\b",
+        re.IGNORECASE
+    )
+
+    def _should_deep_contemplate(self, user_text: str) -> bool:
+        """Return True if the query warrants full multi-voice contemplation."""
+        return bool(self._DEEP_PATTERNS.search(user_text))
+
     async def _generate_response(
         self,
         context: ConversationContext,
         memories: List[Dict[str, Any]],
         world_state: Dict[str, Any],
-        history: Optional[List[Dict[str, str]]] = None
+        history: Optional[List[Dict[str, str]]] = None,
+        system_context: Optional[str] = None
     ) -> ConversationResponse:
         """Generate response using contemplation service"""
         if not self.service_health['contemplation'] or self._circuit_is_open('contemplation'):
@@ -527,7 +546,8 @@ class ConversationOrchestrator(SentientService):
                 "voice_mode": context.voice_mode,
                 "wake_word_triggered": context.wake_word_triggered
             },
-            "history": history or []
+            "history": history or [],
+            "system_context": system_context or ""
         }
 
         try:
@@ -673,7 +693,7 @@ class ConversationOrchestrator(SentientService):
             self.logger.error(f"Failed to stream response: {e}")
             self._circuit_record_failure('contemplation')
             # Fall back to non-streaming
-            return await self._generate_response(context, memories, world_state, history)
+            return await self._generate_response(context, memories, world_state, history, system_context=system_context)
 
     async def _store_interaction(
         self,
@@ -875,14 +895,24 @@ class ConversationOrchestrator(SentientService):
 
             # Step 2.5: Check if user is requesting a system operation
             tool_context = None
-            intent = self.system_tools.detect_intent(user_text)
-            if intent:
-                category, command = intent
-                self.logger.info(f"System tool detected: {category}/{command}")
-                tool_output = await self.system_tools.execute(category, command, user_text)
+            # Check for command chains first (multi-step) — chains take priority
+            chain_result = self.system_tools.detect_chain(user_text)
+            if chain_result:
+                chain_name, chain_def = chain_result
+                self.logger.info(f"Executing command chain: {chain_name}")
+                tool_output = await self.system_tools.execute_chain(chain_name, chain_def, user_text)
                 tool_context = self.system_tools.format_for_prompt(
-                    f"{category}/{command}", tool_output
+                    f"chain/{chain_name}", tool_output
                 )
+            else:
+                intent = self.system_tools.detect_intent(user_text)
+                if intent:
+                    category, command = intent
+                    self.logger.info(f"System tool detected: {category}/{command}")
+                    tool_output = await self.system_tools.execute(category, command, user_text)
+                    tool_context = self.system_tools.format_for_prompt(
+                        f"{category}/{command}", tool_output
+                    )
 
             # Step 0.6: Get feedback context (user ratings of past responses)
             feedback_context = await self._get_feedback_context(user_id)
@@ -908,13 +938,28 @@ class ConversationOrchestrator(SentientService):
             # Add current user message to history (clean, original text)
             user_history.append({"role": "user", "content": user_text})
 
-            # Step 3: Generate response (prefer streaming for lower latency)
+            # Step 2.5: Determine contemplation depth
+            deep_contemplate = self._should_deep_contemplate(user_text)
+
+            # Step 3: Generate response
             await self._update_state(ConversationState.RESPONDING)
-            response = await self._generate_response_stream(
-                context, memories, world_state,
-                history=user_history[:-1],  # Pass history before current msg
-                system_context=system_context
-            )
+            if deep_contemplate:
+                self.logger.info("Deep contemplation mode activated")
+                await self.mqtt_publish(mqtt_topics.PERSONA_STATE, {
+                    'state': 'deep_contemplating',
+                    'timestamp': datetime.now().isoformat()
+                })
+                response = await self._generate_response(
+                    context, memories, world_state,
+                    history=user_history[:-1],
+                    system_context=system_context
+                )
+            else:
+                response = await self._generate_response_stream(
+                    context, memories, world_state,
+                    history=user_history[:-1],  # Pass history before current msg
+                    system_context=system_context
+                )
 
             # Append assistant response to history
             user_history.append({"role": "assistant", "content": response.text})
