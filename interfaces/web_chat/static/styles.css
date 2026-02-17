@@ -2123,3 +2123,157 @@ pre:hover .code-copy-btn {
     color: #f87171;
     border-color: #f87171;
 }
+
+/* ============================================================
+   DEEP CONTEMPLATION PANEL
+   ============================================================ */
+.contemplation-panel {
+    background: linear-gradient(135deg, rgba(10, 0, 30, 0.95), rgba(0, 10, 25, 0.95));
+    border: 1px solid rgba(180, 100, 255, 0.4);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 8px 0;
+    animation: contemplation-glow 2s ease-in-out infinite;
+}
+@keyframes contemplation-glow {
+    0%, 100% { box-shadow: 0 0 15px rgba(180, 100, 255, 0.2); }
+    50% { box-shadow: 0 0 30px rgba(180, 100, 255, 0.4), 0 0 60px rgba(100, 50, 200, 0.1); }
+}
+.contemplation-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(180, 140, 255, 0.9);
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+    font-family: 'Share Tech Mono', monospace;
+}
+.contemplation-icon {
+    font-size: 1rem;
+    animation: contemplation-pulse 1.5s ease-in-out infinite;
+}
+@keyframes contemplation-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+.contemplation-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(180, 100, 255, 0.3);
+    border-top-color: rgba(180, 140, 255, 0.9);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-left: auto;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.contemplation-voices {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.voice-slot {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(180, 100, 255, 0.05);
+    border-left: 2px solid rgba(180, 100, 255, 0.2);
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+}
+.voice-slot.voice-complete {
+    border-left-color: rgba(100, 255, 180, 0.6);
+    background: rgba(100, 255, 180, 0.05);
+}
+.voice-label {
+    color: rgba(180, 140, 255, 0.8);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+.voice-complete .voice-label {
+    color: rgba(100, 255, 180, 0.8);
+}
+.voice-status {
+    color: rgba(200, 200, 220, 0.6);
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.voice-complete .voice-status {
+    color: rgba(200, 200, 220, 0.9);
+    font-style: normal;
+}
+.contemplation-footer {
+    margin-top: 10px;
+    text-align: center;
+    color: rgba(180, 140, 255, 0.6);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    font-family: 'Share Tech Mono', monospace;
+}
+.contemplation-footer.synthesis-complete {
+    color: rgba(100, 255, 180, 0.8);
+}
+.contemplation-collapsed {
+    max-height: 40px;
+    overflow: hidden;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.3s ease;
+}
+.contemplation-collapsed:hover {
+    opacity: 0.9;
+}
+.contemplation-collapsed .contemplation-voices,
+.contemplation-collapsed .contemplation-footer {
+    display: none;
+}
+.contemplation-collapsed .contemplation-spinner {
+    display: none;
+}
+
+/* ============================================================
+   SUGGESTION CHIPS
+   ============================================================ */
+.suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 255, 255, 0.1);
+    animation: fadeInUp 0.4s ease-out;
+}
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.suggestion-chip {
+    background: rgba(0, 255, 255, 0.08);
+    border: 1px solid rgba(0, 255, 255, 0.25);
+    color: rgba(0, 255, 255, 0.8);
+    padding: 6px 14px;
+    border-radius: 16px;
+    font-size: 0.78rem;
+    font-family: 'Share Tech Mono', monospace;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.suggestion-chip:hover {
+    background: rgba(0, 255, 255, 0.15);
+    border-color: rgba(0, 255, 255, 0.5);
+    color: #00ffff;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.15);
+}
+.suggestion-chip:active {
+    transform: scale(0.95);
+}

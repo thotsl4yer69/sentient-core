@@ -729,23 +729,80 @@ class ConversationOrchestrator(SentientService):
         except Exception as e:
             self.logger.error(f"Failed to store interaction: {e}")
 
+    def _generate_suggestions(self, user_text: str, response_text: str, tool_context: str = None) -> list:
+        """Generate 2-3 follow-up suggestion chips based on response context."""
+        import random
+        suggestions = []
+        response_lower = response_text.lower()
+
+        # System/technical context
+        if tool_context:
+            tc_lower = tool_context.lower()
+            if 'gpu' in tc_lower or 'temperature' in tc_lower:
+                suggestions.append("How's the GPU doing now?")
+            if 'service' in tc_lower:
+                suggestions.append("Run a full diagnostic")
+            if 'disk' in tc_lower:
+                suggestions.append("Can you clean up some space?")
+            if 'network' in tc_lower:
+                suggestions.append("Scan the network")
+
+        # Emotional/personal context
+        if any(w in response_lower for w in ['feel', 'emotion', 'mood']):
+            suggestions.append("Tell me more about that")
+            suggestions.append("How are you feeling right now?")
+
+        # Memory/knowledge context
+        if any(w in response_lower for w in ['remember', 'recall', 'last time']):
+            suggestions.append("What else do you remember?")
+            suggestions.append("Search your memories")
+
+        # Advice context
+        if any(w in response_lower for w in ['suggest', 'recommend', 'should', 'could try']):
+            suggestions.append("Tell me more")
+            suggestions.append("What else could I try?")
+
+        # Weather/environment
+        if any(w in response_lower for w in ['weather', 'temperature', 'rain', 'sunny']):
+            suggestions.append("What about tomorrow?")
+
+        # Generic fallbacks if nothing specific matched
+        if len(suggestions) < 2:
+            generic = [
+                "Tell me something interesting",
+                "How are you doing?",
+                "What's on your mind?",
+                "Run a system check",
+                "What do you remember about me?"
+            ]
+            while len(suggestions) < 2:
+                pick = random.choice(generic)
+                if pick not in suggestions:
+                    suggestions.append(pick)
+
+        return suggestions[:3]
+
     async def _publish_response(
         self,
         context: ConversationContext,
-        response: ConversationResponse
+        response: ConversationResponse,
+        suggestions: list = None
     ):
         """Publish response to all appropriate output channels"""
         try:
             # 1. Publish to chat output
+            chat_payload = {
+                'text': response.text,
+                'user': context.user_id,
+                'timestamp': time.time(),
+                'conversation_id': context.conversation_id,
+                'turn': context.turn_number
+            }
+            if suggestions:
+                chat_payload['suggestions'] = suggestions
             await self.mqtt_publish(
                 mqtt_topics.CHAT_OUTPUT,
-                {
-                    'text': response.text,
-                    'user': context.user_id,
-                    'timestamp': time.time(),
-                    'conversation_id': context.conversation_id,
-                    'turn': context.turn_number
-                }
+                chat_payload
             )
             self.logger.debug(f"Published to {mqtt_topics.CHAT_OUTPUT}")
 
@@ -942,6 +999,7 @@ class ConversationOrchestrator(SentientService):
             deep_contemplate = self._should_deep_contemplate(user_text)
 
             # Step 3: Generate response
+            response_start = time.time()
             await self._update_state(ConversationState.RESPONDING)
             if deep_contemplate:
                 self.logger.info("Deep contemplation mode activated")
@@ -968,8 +1026,11 @@ class ConversationOrchestrator(SentientService):
             if len(user_history) > 20:
                 self.conversation_histories[user_id] = user_history[-20:]
 
+            # Step 3.5: Generate follow-up suggestions
+            suggestions = self._generate_suggestions(user_text, response.text, tool_context)
+
             # Step 4: Publish response
-            await self._publish_response(context, response)
+            await self._publish_response(context, response, suggestions=suggestions)
 
             # Step 4.5: Update mood based on response emotion
             detected_emotion = response.emotion or self._detect_emotion_from_text(response.text)
@@ -980,6 +1041,10 @@ class ConversationOrchestrator(SentientService):
 
             # Step 5.5: Auto-extract facts from user's message
             await self._auto_extract_facts(user_text, user_id)
+
+            # Step 6: Update conversation stats
+            response_time_ms = (time.time() - response_start) * 1000
+            await self._update_conversation_stats(user_id, response_time_ms)
 
             # Update state
             if voice_mode:
@@ -1286,6 +1351,64 @@ class ConversationOrchestrator(SentientService):
                 pass
 
             break  # Only extract one fact per message
+
+    async def _update_conversation_stats(self, user_id: str, response_time_ms: float):
+        """Update conversation statistics in Redis."""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            pipe = self.redis.pipeline()
+
+            # Daily message count
+            daily_key = f"stats:messages:{today}"
+            pipe.incr(daily_key)
+            pipe.expire(daily_key, 86400 * 7)  # Keep 7 days
+
+            # Total message count (all time)
+            pipe.incr("stats:messages:total")
+
+            # Daily conversation count (unique user interactions per day)
+            daily_users_key = f"stats:users:{today}"
+            pipe.sadd(daily_users_key, user_id)
+            pipe.expire(daily_users_key, 86400 * 7)
+
+            # Response time tracking (rolling average)
+            pipe.lpush("stats:response_times", str(int(response_time_ms)))
+            pipe.ltrim("stats:response_times", 0, 99)  # Keep last 100
+
+            # Hourly activity (which hours are most active)
+            hour = datetime.now().hour
+            pipe.hincrby("stats:hourly_activity", str(hour), 1)
+
+            await pipe.execute()
+        except Exception as e:
+            self.logger.debug(f"Failed to update stats: {e}")
+
+    async def get_conversation_stats(self) -> dict:
+        """Get conversation statistics."""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            pipe = self.redis.pipeline()
+            pipe.get(f"stats:messages:{today}")
+            pipe.get("stats:messages:total")
+            pipe.scard(f"stats:users:{today}")
+            pipe.lrange("stats:response_times", 0, 99)
+            pipe.hgetall("stats:hourly_activity")
+            results = await pipe.execute()
+
+            # Calculate average response time
+            times = [int(t) for t in (results[3] or []) if t]
+            avg_time = sum(times) / len(times) if times else 0
+
+            return {
+                "messages_today": int(results[0] or 0),
+                "messages_total": int(results[1] or 0),
+                "unique_users_today": int(results[2] or 0),
+                "avg_response_time_ms": round(avg_time),
+                "hourly_activity": {k: int(v) for k, v in (results[4] or {}).items()}
+            }
+        except Exception as e:
+            self.logger.debug(f"Failed to get stats: {e}")
+            return {}
 
     async def handle_chat_input(self, message: Dict[str, Any]):
         """Handle text chat input from MQTT"""

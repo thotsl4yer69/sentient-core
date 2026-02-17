@@ -592,6 +592,16 @@ class ChatInterface {
                     this.updateThinking(data.active, data.stage);
                     break;
 
+                case 'persona_state':
+                    if (data.state === 'deep_contemplating') {
+                        this.showContemplationPanel();
+                    }
+                    break;
+
+                case 'thought_stream':
+                    this.populateContemplationPanel(data);
+                    break;
+
                 case 'tts_status':
                     this.updateTTSStatus(data.status, data.progress);
                     break;
@@ -700,7 +710,7 @@ class ChatInterface {
         }
     }
 
-    createMessageElement(role, content, timestamp, emotion, isStreaming = false) {
+    createMessageElement(role, content, timestamp, emotion, isStreaming = false, suggestions = null, isProactive = false) {
         const messageEl = document.createElement('div');
         messageEl.className = `message ${role}`;
         if (isStreaming) messageEl.id = 'streaming-message';
@@ -787,6 +797,24 @@ class ChatInterface {
             });
             contentEl.appendChild(feedbackDiv);
         }
+        // Add suggestion chips for assistant messages (non-streaming, non-proactive)
+        if (role === 'assistant' && !isStreaming && !isProactive && suggestions && suggestions.length > 0) {
+            const suggestionsDiv = document.createElement('div');
+            suggestionsDiv.className = 'suggestion-chips';
+            suggestions.forEach(text => {
+                const chip = document.createElement('button');
+                chip.className = 'suggestion-chip';
+                chip.textContent = text;
+                chip.addEventListener('click', () => {
+                    this.messageInput.value = text;
+                    this.sendMessage();
+                    suggestionsDiv.remove();
+                });
+                suggestionsDiv.appendChild(chip);
+            });
+            contentEl.appendChild(suggestionsDiv);
+        }
+
         messageEl.appendChild(avatarEl);
         messageEl.appendChild(contentEl);
 
@@ -816,6 +844,7 @@ class ChatInterface {
     addMessage(messageData) {
         const { role, content, timestamp, emotion } = messageData;
         const isProactive = messageData.proactive === true;
+        const suggestions = messageData.suggestions || null;
 
         // Remove streaming element if final assistant message arrives
         if (role === 'assistant') {
@@ -825,7 +854,7 @@ class ChatInterface {
             this._streamingText = '';
         }
 
-        const { messageEl } = this.createMessageElement(role, content, timestamp, emotion);
+        const { messageEl } = this.createMessageElement(role, content, timestamp, emotion, false, suggestions, isProactive);
 
         // Add proactive visual indicator
         if (isProactive) {
@@ -1950,6 +1979,84 @@ class ChatInterface {
         });
 
         closeBtn.addEventListener('click', () => this.toggleMessageSearch());
+    }
+
+    showContemplationPanel() {
+        // Remove existing panel if any
+        const existing = document.getElementById('contemplation-panel');
+        if (existing) existing.remove();
+
+        const panel = document.createElement('div');
+        panel.id = 'contemplation-panel';
+        panel.className = 'contemplation-panel';
+        panel.innerHTML = `
+            <div class="contemplation-header">
+                <span class="contemplation-icon">&#9672;</span>
+                <span>DEEP CONTEMPLATION ACTIVE</span>
+                <span class="contemplation-spinner"></span>
+            </div>
+            <div class="contemplation-voices" id="contemplation-voices">
+                <div class="voice-slot" data-voice="observer"><span class="voice-label">OBSERVER</span><span class="voice-status">analyzing...</span></div>
+                <div class="voice-slot" data-voice="analyst"><span class="voice-label">ANALYST</span><span class="voice-status">reasoning...</span></div>
+                <div class="voice-slot" data-voice="empath"><span class="voice-label">EMPATH</span><span class="voice-status">feeling...</span></div>
+                <div class="voice-slot" data-voice="skeptic"><span class="voice-label">SKEPTIC</span><span class="voice-status">questioning...</span></div>
+                <div class="voice-slot" data-voice="memory"><span class="voice-label">MEMORY</span><span class="voice-status">connecting...</span></div>
+            </div>
+            <div class="contemplation-footer">Synthesizing perspectives...</div>
+        `;
+        this.messagesContainer.appendChild(panel);
+        this.scrollToBottom();
+
+        // Animate voices appearing one by one
+        const slots = panel.querySelectorAll('.voice-slot');
+        slots.forEach((slot, i) => {
+            slot.style.opacity = '0';
+            slot.style.transform = 'translateX(-20px)';
+            setTimeout(() => {
+                slot.style.transition = 'all 0.4s ease-out';
+                slot.style.opacity = '1';
+                slot.style.transform = 'translateX(0)';
+            }, 500 + i * 600);
+        });
+    }
+
+    populateContemplationPanel(data) {
+        const panel = document.getElementById('contemplation-panel');
+        if (!panel) return;
+
+        const voices = data.voices || {};
+        const voicesContainer = document.getElementById('contemplation-voices');
+
+        // Update each voice slot with actual content
+        for (const [voiceName, voiceData] of Object.entries(voices)) {
+            const slot = voicesContainer.querySelector(`[data-voice="${voiceName}"]`);
+            if (slot) {
+                const content = voiceData.content || '';
+                const truncated = content.length > 120 ? content.substring(0, 120) + '...' : content;
+                slot.querySelector('.voice-status').textContent = truncated;
+                slot.classList.add('voice-complete');
+                slot.title = content; // Full text on hover
+            }
+        }
+
+        // Update footer with timing
+        const footer = panel.querySelector('.contemplation-footer');
+        if (footer) {
+            const totalTime = (data.total_time_ms / 1000).toFixed(1);
+            footer.textContent = `Synthesis complete (${totalTime}s) — response incoming`;
+            footer.classList.add('synthesis-complete');
+        }
+
+        // Auto-collapse panel after 8 seconds
+        setTimeout(() => {
+            if (panel) {
+                panel.classList.add('contemplation-collapsed');
+                // Add click to expand
+                panel.addEventListener('click', () => {
+                    panel.classList.toggle('contemplation-collapsed');
+                });
+            }
+        }, 8000);
     }
 
     // Keep-alive ping

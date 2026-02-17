@@ -451,6 +451,8 @@ class MQTTBridge:
                     await client.subscribe("sentient/conversation/state")
                     await client.subscribe("sentient/tts/output")
                     await client.subscribe("sentient/avatar/speaking")
+                    await client.subscribe("sentient/persona/state")
+                    await client.subscribe("sentient/persona/thought_stream")
 
                     logger.info("MQTT bridge subscribed to conversation topics")
 
@@ -521,6 +523,10 @@ class MQTTBridge:
                 broadcast_data["message"]["proactive"] = True
                 broadcast_data["message"]["trigger_type"] = payload.get("trigger_type", "")
 
+            # Forward suggestion chips
+            if payload.get("suggestions"):
+                broadcast_data["message"]["suggestions"] = payload["suggestions"]
+
             await self.connection_manager.broadcast(broadcast_data)
 
         elif topic == "sentient/chat/stream":
@@ -575,6 +581,24 @@ class MQTTBridge:
                 "phonemes": payload.get("phonemes", []),
                 "duration": audio_duration,
                 "text": payload.get("text", "")
+            })
+
+        elif topic == "sentient/persona/state":
+            state = payload.get("state", "")
+            await self.connection_manager.broadcast({
+                "type": "persona_state",
+                "state": state,
+                "timestamp": payload.get("timestamp", "")
+            })
+
+        elif topic == "sentient/persona/thought_stream":
+            # Forward contemplation voices to UI
+            await self.connection_manager.broadcast({
+                "type": "thought_stream",
+                "voices": payload.get("voices", {}),
+                "response": payload.get("response", ""),
+                "emotion": payload.get("emotion", {}),
+                "total_time_ms": payload.get("total_time_ms", 0)
             })
 
         elif topic == "sentient/avatar/speaking":
