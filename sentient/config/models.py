@@ -26,11 +26,12 @@ class RedisConfig:
 class OllamaConfig:
     """Ollama LLM configuration."""
     host: str = "http://localhost:11434"
-    model: str = "qwen2.5:1.5b"
+    model: str = "llama3.2:3b"
     timeout: float = 120.0
     default_max_tokens: int = 300
     default_temperature: float = 0.7
     think_enabled: bool = False
+    num_ctx: int = 2048
 
 
 @dataclass

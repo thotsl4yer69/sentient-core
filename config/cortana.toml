@@ -13,7 +13,8 @@ db = 0
 
 [ollama]
 host = "http://localhost:11434"
-model = "qwen2.5:1.5b"
+model = "llama3.2:3b"
+num_ctx = 2048
 
 [whisper]
 service_topic = "sentient/stt/transcribe"

@@ -905,6 +905,21 @@
             destroy: avatar.destroy.bind(avatar)
         };
 
+        // Fix canvas sizing race: re-measure after layout settles
+        requestAnimationFrame(() => {
+            avatar.setupCanvas();
+            // Double-RAF to ensure paint has happened
+            requestAnimationFrame(() => avatar.setupCanvas());
+        });
+
+        // Robust fallback: ResizeObserver catches late layout changes
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => {
+                avatar.setupCanvas();
+            });
+            ro.observe(canvas);
+        }
+
         console.log('[HolographicAvatar] Initialized - Canvas2D procedural hologram');
     }
 

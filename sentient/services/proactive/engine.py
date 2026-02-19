@@ -1261,13 +1261,14 @@ class ProactiveBehaviorEngine(SentientService):
             # Record today's date in the set
             await self.redis_client.sadd("interaction:daily_dates", today_str)
 
-            # Count consecutive streak ending today
+            # Count consecutive streak ending today - single Redis call
+            all_dates = await self.redis_client.smembers("interaction:daily_dates")
+            date_strings = {d.decode() if isinstance(d, bytes) else d for d in all_dates}
             streak = 0
             check_date = datetime.now()
-            for _ in range(60):  # max 60 days look-back
+            for _ in range(60):
                 date_str = check_date.strftime("%Y-%m-%d")
-                exists = await self.redis_client.sismember("interaction:daily_dates", date_str)
-                if exists:
+                if date_str in date_strings:
                     streak += 1
                     check_date -= timedelta(days=1)
                 else:
@@ -1448,7 +1449,7 @@ class ProactiveBehaviorEngine(SentientService):
         # Check we haven't already greeted today (Redis date key)
         today = datetime.now().date()
         greeted_key = f"proactive:morning_greeted:{today}"
-        if self.redis.get(greeted_key):
+        if await self.redis_client.get(greeted_key):
             return None
 
         # Check that the last interaction was from a previous day (first chat today)
@@ -1465,7 +1466,7 @@ class ProactiveBehaviorEngine(SentientService):
             "confidence": 1.0,
             "context": {"hour": current_hour}
         }
-        self.redis.setex(greeted_key, 86400, "1")
+        await self.redis_client.setex(greeted_key, 86400, "1")
         return result
 
     async def _generate_template_response(self, trigger_type: TriggerType, context: Dict[str, Any]) -> Optional[str]:

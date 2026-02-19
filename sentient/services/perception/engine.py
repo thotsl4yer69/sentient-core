@@ -229,6 +229,9 @@ class PerceptionLayer:
 
         # Runtime flags
         self.running = False
+        self._last_published_state: Optional[Dict[str, Any]] = None
+        self._last_publish_time: float = 0.0
+        self._heartbeat_interval: float = 30.0  # Force publish every 30s even if unchanged
 
         # Network scanner
         self.network_scanner: Optional[NetworkScanner] = None
@@ -312,7 +315,7 @@ class PerceptionLayer:
                     )
                     self._add_threat(threat)
 
-            # Check for suspicious objects
+            # Check for suspicious objects - with confidence-based severity
             suspicious_classes = ["weapon", "tool", "suspicious_object"]
             detected_suspicious = [
                 cls for cls in detection.get("classes", [])
@@ -320,15 +323,22 @@ class PerceptionLayer:
             ]
 
             if detected_suspicious:
-                threat = Threat(
-                    source=f"vision_{camera_id}",
-                    type="suspicious_object",
-                    severity=8,
-                    timestamp=datetime.now().isoformat(),
-                    location=detection.get("location"),
-                    details={"objects": detected_suspicious}
-                )
-                self._add_threat(threat)
+                confidence = detection.get("confidence", 0)
+                # Filter out low-confidence false positives
+                if confidence < 0.5:
+                    logger.debug(f"Ignoring low-confidence suspicious detection: {detected_suspicious} ({confidence:.2f})")
+                else:
+                    # Scale severity by confidence
+                    severity = 8 if confidence >= 0.7 else 5
+                    threat = Threat(
+                        source=f"vision_{camera_id}",
+                        type="suspicious_object",
+                        severity=severity,
+                        timestamp=datetime.now().isoformat(),
+                        location=detection.get("location"),
+                        details={"objects": detected_suspicious, "confidence": confidence}
+                    )
+                    self._add_threat(threat)
 
         except Exception as e:
             logger.error(f"Error analyzing vision threats: {e}")
@@ -433,6 +443,13 @@ class PerceptionLayer:
 
     def build_world_state(self) -> WorldState:
         """Build unified world state from all sensor data"""
+        # Expire stale threats (older than 60 seconds)
+        cutoff = (datetime.now() - timedelta(seconds=60)).isoformat()
+        self.active_threats = [
+            t for t in self.active_threats
+            if t.timestamp > cutoff
+        ]
+
         jack_present, jack_location = self._determine_jack_presence()
 
         # Add network info to system health
@@ -459,10 +476,22 @@ class PerceptionLayer:
         return world_state
 
     async def publish_world_state(self, client: aiomqtt.Client):
-        """Publish world state to MQTT"""
+        """Publish world state to MQTT (only if changed or heartbeat due)"""
         try:
             world_state = self.build_world_state()
             state_dict = asdict(world_state)
+
+            # Check if state actually changed (ignore volatile fields)
+            _volatile = {'timestamp', 'last_interaction_seconds', 'system_health'}
+            comparable = {k: v for k, v in state_dict.items() if k not in _volatile}
+            last_comparable = {k: v for k, v in (self._last_published_state or {}).items() if k not in _volatile} if self._last_published_state else None
+
+            now = time.time()
+            heartbeat_due = (now - self._last_publish_time) >= self._heartbeat_interval
+            state_changed = (comparable != last_comparable)
+
+            if not state_changed and not heartbeat_due:
+                return  # Skip — nothing new
 
             await client.publish(
                 mqtt_topics.PERCEPTION_STATE,
@@ -470,11 +499,17 @@ class PerceptionLayer:
                 qos=1
             )
 
-            logger.info(
-                f"World state published - Jack: {world_state.jack_present}, "
-                f"Threat: {world_state.threat_level}, "
-                f"Ambient: {world_state.ambient_state}"
-            )
+            self._last_published_state = state_dict
+            self._last_publish_time = now
+
+            if state_changed:
+                logger.info(
+                    f"World state published - Jack: {world_state.jack_present}, "
+                    f"Threat: {world_state.threat_level}, "
+                    f"Ambient: {world_state.ambient_state}"
+                )
+            else:
+                logger.debug("World state heartbeat (no change)")
 
         except Exception as e:
             logger.error(f"Error publishing world state: {e}")

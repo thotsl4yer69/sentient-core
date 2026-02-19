@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORTANA // VISION</title>
+    <meta name="theme-color" content="#0a0e17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --color-bg: #0a0a0f;
+            --color-bg-elevated: #12121a;
+            --color-bg-glass: rgba(18, 18, 26, 0.85);
+            --color-primary: #00d4ff;
+            --color-secondary: #ff00ff;
+            --color-text: #e0e0e0;
+            --color-text-dim: #888;
+            --color-border: rgba(0, 212, 255, 0.2);
+            --color-success: #00ff88;
+            --color-warning: #ffaa00;
+            --color-danger: #ff4444;
+            --glow-primary: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        body {
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            background: var(--color-bg);
+            color: var(--color-text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: var(--color-bg-glass);
+            border-bottom: 1px solid var(--color-border);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--color-primary);
+            text-shadow: var(--glow-primary);
+            letter-spacing: 2px;
+        }
+
+        .header-back {
+            color: var(--color-primary);
+            text-decoration: none;
+            font-size: 13px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        .header-back:hover { opacity: 1; }
+
+        .header-status {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-text-dim);
+        }
+        .status-dot.online { background: var(--color-success); box-shadow: 0 0 8px rgba(0, 255, 136, 0.5); }
+        .status-dot.offline { background: var(--color-danger); }
+        .status-dot.degraded { background: var(--color-warning); animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Content */
+        .content {
+            padding: 12px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Threat Level Bar */
+        .threat-bar {
+            background: var(--color-bg-glass);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .threat-label {
+            font-size: 11px;
+            color: var(--color-text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+
+        .threat-meter {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .threat-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s, background 0.5s;
+            width: 0%;
+            background: var(--color-success);
+        }
+
+        .threat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            min-width: 30px;
+            text-align: right;
+        }
+
+        /* Camera Grid */
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .camera-card {
+            background: var(--color-bg-glass);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.3s;
+        }
+        .camera-card.active { border-color: var(--color-primary); }
+        .camera-card.alert { border-color: var(--color-danger); animation: pulse-border 1s infinite; }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: var(--color-danger); }
+            50% { border-color: rgba(255, 68, 68, 0.3); }
+        }
+
+        .camera-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .camera-name {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--color-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .camera-node {
+            font-size: 10px;
+            color: var(--color-text-dim);
+        }
+
+        .camera-feed {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .camera-feed img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .camera-offline {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            color: var(--color-text-dim);
+        }
+
+        .camera-offline svg {
+            width: 40px;
+            height: 40px;
+            opacity: 0.3;
+        }
+
+        .camera-offline-text {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .camera-footer {
+            padding: 8px 12px;
+            border-top: 1px solid var(--color-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .detection-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .detection-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: rgba(0, 212, 255, 0.15);
+            color: var(--color-primary);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+        .detection-tag.person {
+            background: rgba(255, 170, 0, 0.15);
+            color: var(--color-warning);
+            border-color: rgba(255, 170, 0, 0.3);
+        }
+        .detection-tag.threat {
+            background: rgba(255, 68, 68, 0.15);
+            color: var(--color-danger);
+            border-color: rgba(255, 68, 68, 0.3);
+        }
+
+        .camera-fps {
+            font-size: 10px;
+            color: var(--color-text-dim);
+        }
+
+        /* Detection Log */
+        .section-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            color: var(--color-primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .detection-log {
+            background: var(--color-bg-glass);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 11px;
+        }
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-time {
+            color: var(--color-text-dim);
+            white-space: nowrap;
+            min-width: 55px;
+        }
+
+        .log-source {
+            color: var(--color-primary);
+            min-width: 80px;
+        }
+
+        .log-message {
+            color: var(--color-text);
+            flex: 1;
+        }
+
+        /* Node Status */
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .node-card {
+            background: var(--color-bg-glass);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .node-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .node-name {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--color-text);
+        }
+
+        .node-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+
+        .node-stat {
+            font-size: 10px;
+        }
+
+        .node-stat-label {
+            color: var(--color-text-dim);
+        }
+
+        .node-stat-value {
+            color: var(--color-primary);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+        /* No data state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--color-text-dim);
+        }
+        .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3; }
+
+        @media (max-width: 600px) {
+            .camera-grid { grid-template-columns: 1fr; }
+            .nodes-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <a href="/" class="header-back">&larr; BACK</a>
+        <span class="header-title">VISION // PERCEPTION</span>
+        <div class="header-status">
+            <span class="status-dot" id="perception-dot" title="Perception Service"></span>
+            <span style="font-size:10px;color:var(--color-text-dim)" id="node-count">0 nodes</span>
+        </div>
+    </header>
+
+    <div class="content">
+        <!-- Threat Level -->
+        <div class="threat-bar">
+            <span class="threat-label">Threat Level</span>
+            <div class="threat-meter">
+                <div class="threat-fill" id="threat-fill"></div>
+            </div>
+            <span class="threat-value" id="threat-value">0</span>
+        </div>
+
+        <!-- Camera Feeds -->
+        <div class="section-title">Live Feeds</div>
+        <div class="camera-grid" id="camera-grid">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Vision Nodes -->
+        <div class="section-title">Vision Nodes</div>
+        <div class="nodes-grid" id="nodes-grid">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Detection Log -->
+        <div class="section-title">Detection Log</div>
+        <div class="detection-log" id="detection-log">
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 8v4M12 16h.01"/>
+                </svg>
+                <div>Waiting for detections...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        // Vision node configuration
+        const NODES = {
+            pi1: {
+                name: 'Pi1 // Hailo-8',
+                hardware: 'RPi5 + Hailo-8 (26 TOPS)',
+                model: 'YOLOv8s',
+                location: 'Portable',
+                ip: '192.168.1.219',
+                streamUrl: '/api/vision/stream/pi1',
+                cameras: ['portable']
+            },
+            rdkx5: {
+                name: 'RDK X5 // BPU',
+                hardware: 'D-Robotics BPU',
+                model: 'YOLOv8n',
+                location: 'NVR',
+                ip: '192.168.1.208',
+                streamUrl: '/api/vision/stream/rdkx5',
+                cameras: ['front_door', 'backyard', 'driveway', 'side_gate']
+            }
+        };
+
+        const detectionLog = [];
+        const MAX_LOG = 100;
+        let perceptionState = null;
+        let ws = null;
+
+        // --- UI Updates ---
+
+        function updateThreatLevel(level) {
+            const fill = document.getElementById('threat-fill');
+            const value = document.getElementById('threat-value');
+            const pct = Math.min(100, level * 10);
+            fill.style.width = pct + '%';
+            value.textContent = level;
+
+            if (level <= 2) {
+                fill.style.background = 'var(--color-success)';
+                value.style.color = 'var(--color-success)';
+            } else if (level <= 5) {
+                fill.style.background = 'var(--color-warning)';
+                value.style.color = 'var(--color-warning)';
+            } else {
+                fill.style.background = 'var(--color-danger)';
+                value.style.color = 'var(--color-danger)';
+            }
+        }
+
+        function renderCameraGrid(visionStatus) {
+            const grid = document.getElementById('camera-grid');
+            grid.innerHTML = '';
+
+            // Pi1 camera
+            const pi1Online = visionStatus?.nodes?.pi1?.online || false;
+            grid.appendChild(createCameraCard('pi1', 'portable', 'Pi1 // Hailo-8', pi1Online,
+                visionStatus?.nodes?.pi1?.detections || []));
+
+            // RDK X5 cameras (from NVR)
+            const rdkOnline = visionStatus?.nodes?.rdkx5?.online || false;
+            for (const cam of NODES.rdkx5.cameras) {
+                grid.appendChild(createCameraCard('rdkx5', cam,
+                    cam.replace('_', ' ').toUpperCase(),
+                    rdkOnline,
+                    visionStatus?.nodes?.rdkx5?.detections?.[cam] || []));
+            }
+        }
+
+        function createCameraCard(nodeId, camName, label, online, detections) {
+            const card = document.createElement('div');
+            card.className = 'camera-card' + (online ? ' active' : '');
+
+            const hasPerson = detections.some(d => d.class === 'person');
+            if (hasPerson) card.className += ' alert';
+
+            const streamUrl = nodeId === 'pi1'
+                ? `/api/vision/stream/pi1`
+                : `/api/vision/stream/rdkx5_${camName}`;
+
+            card.innerHTML = `
+                <div class="camera-header">
+                    <span class="camera-name">${label}</span>
+                    <div style="display:flex;align-items:center;gap:4px">
+                        <span class="status-dot ${online ? 'online' : 'offline'}"></span>
+                        <span class="camera-node">${NODES[nodeId].name.split(' //')[0]}</span>
+                    </div>
+                </div>
+                <div class="camera-feed" id="feed-${nodeId}-${camName}">
+                    ${online
+                        ? `<img src="${streamUrl}" alt="${label}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+                           <div class="camera-offline" style="display:none;position:absolute">
+                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/></svg>
+                               <span class="camera-offline-text">Stream error</span>
+                           </div>`
+                        : `<div class="camera-offline">
+                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                   <path d="M1 1l22 22M17 17H5a2 2 0 01-2-2V7c0-.3.1-.6.2-.8M19 13V5a2 2 0 00-2-2H8"/>
+                               </svg>
+                               <span class="camera-offline-text">Offline</span>
+                           </div>`
+                    }
+                </div>
+                <div class="camera-footer">
+                    <div class="detection-tags">
+                        ${detections.length > 0
+                            ? detections.map(d => `<span class="detection-tag ${d.class === 'person' ? 'person' : ''}">${d.class} ${(d.confidence * 100).toFixed(0)}%</span>`).join('')
+                            : '<span style="font-size:10px;color:var(--color-text-dim)">No detections</span>'
+                        }
+                    </div>
+                </div>
+            `;
+            return card;
+        }
+
+        function renderNodes(visionStatus) {
+            const grid = document.getElementById('nodes-grid');
+            grid.innerHTML = '';
+
+            for (const [id, config] of Object.entries(NODES)) {
+                const nodeData = visionStatus?.nodes?.[id] || {};
+                const online = nodeData.online || false;
+                const card = document.createElement('div');
+                card.className = 'node-card';
+                card.innerHTML = `
+                    <div class="node-header">
+                        <span class="status-dot ${online ? 'online' : 'offline'}"></span>
+                        <span class="node-name">${config.name}</span>
+                    </div>
+                    <div class="node-stats">
+                        <div class="node-stat">
+                            <span class="node-stat-label">Hardware: </span>
+                            <span class="node-stat-value">${config.hardware}</span>
+                        </div>
+                        <div class="node-stat">
+                            <span class="node-stat-label">Model: </span>
+                            <span class="node-stat-value">${config.model}</span>
+                        </div>
+                        <div class="node-stat">
+                            <span class="node-stat-label">Location: </span>
+                            <span class="node-stat-value">${config.location}</span>
+                        </div>
+                        <div class="node-stat">
+                            <span class="node-stat-label">IP: </span>
+                            <span class="node-stat-value">${config.ip}</span>
+                        </div>
+                        <div class="node-stat">
+                            <span class="node-stat-label">FPS: </span>
+                            <span class="node-stat-value">${nodeData.fps || '—'}</span>
+                        </div>
+                        <div class="node-stat">
+                            <span class="node-stat-label">Uptime: </span>
+                            <span class="node-stat-value">${nodeData.uptime || '—'}</span>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        function addLogEntry(source, message) {
+            const now = new Date();
+            const time = now.toTimeString().slice(0, 8);
+            detectionLog.unshift({ time, source, message });
+            if (detectionLog.length > MAX_LOG) detectionLog.pop();
+            renderLog();
+        }
+
+        function renderLog() {
+            const el = document.getElementById('detection-log');
+            if (detectionLog.length === 0) return;
+            el.innerHTML = detectionLog.map(e => `
+                <div class="log-entry">
+                    <span class="log-time">${e.time}</span>
+                    <span class="log-source">${e.source}</span>
+                    <span class="log-message">${e.message}</span>
+                </div>
+            `).join('');
+        }
+
+        // --- Data Fetching ---
+
+        async function fetchVisionStatus() {
+            try {
+                const res = await fetch('/api/vision/status');
+                if (!res.ok) return null;
+                return await res.json();
+            } catch { return null; }
+        }
+
+        async function refresh() {
+            const status = await fetchVisionStatus();
+            if (!status) return;
+
+            perceptionState = status;
+            updateThreatLevel(status.threat_level || 0);
+            renderCameraGrid(status);
+            renderNodes(status);
+
+            // Update perception dot
+            const dot = document.getElementById('perception-dot');
+            dot.className = 'status-dot ' + (status.perception_online ? 'online' : 'offline');
+
+            // Node count
+            const onlineCount = Object.values(status.nodes || {}).filter(n => n.online).length;
+            const totalCount = Object.keys(status.nodes || {}).length;
+            document.getElementById('node-count').textContent = `${onlineCount}/${totalCount} nodes`;
+        }
+
+        // --- WebSocket for real-time updates ---
+
+        function connectWS() {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${proto}//${location.host}/ws/vision`);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'perception_update') {
+                        perceptionState = data;
+                        updateThreatLevel(data.threat_level || 0);
+                        renderCameraGrid(data);
+                        renderNodes(data);
+                    } else if (data.type === 'detection') {
+                        const classes = (data.objects || []).map(o => o.class).join(', ');
+                        addLogEntry(data.source || 'unknown', classes || 'motion detected');
+                    }
+                } catch (e) {
+                    console.error('WS parse error:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(connectWS, 3000);
+            };
+
+            ws.onerror = () => ws.close();
+        }
+
+        // --- Init ---
+
+        refresh();
+        setInterval(refresh, 5000);
+        connectWS();
+
+    })();
+    </script>
+</body>
+</html>

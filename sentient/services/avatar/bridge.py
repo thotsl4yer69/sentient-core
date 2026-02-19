@@ -209,6 +209,10 @@ class AvatarBridgeService(SentientService):
         async def _handle_tts(topic: str, payload: bytes):
             await self._handle_tts_message(payload)
 
+        @self.on_mqtt(mqtt_topics.TTS_OUTPUT)
+        async def _handle_tts_output(topic: str, payload: bytes):
+            await self._handle_tts_message(payload)
+
         @self.on_mqtt(mqtt_topics.WAKE_WORD_DETECTED)
         async def _handle_wake(topic: str, payload: bytes):
             await self._handle_wake_detected()
@@ -506,7 +510,8 @@ class AvatarBridgeService(SentientService):
             else:
                 if phonemes:
                     last = phonemes[-1]
-                    audio_duration = last.get("time", 0) + last.get("duration", 0.1) + 0.5
+                    # Support both formats: {time, duration} and {start, end}
+                    audio_duration = last.get("end", last.get("time", 0) + last.get("duration", 0.1)) + 0.5
                 else:
                     audio_duration = 3.0
 

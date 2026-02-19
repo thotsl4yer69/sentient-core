@@ -24,6 +24,7 @@ class ChatInterface {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.ttsEnabled = false;
+        this.handsFreeMode = false;
         this.messageQueue = [];
         this.dashboardOpen = false;
         this.emotionHistory = [];
@@ -50,6 +51,7 @@ class ChatInterface {
         this.sendBtn = document.getElementById('send-btn');
         this.voiceBtn = document.getElementById('voice-btn');
         this.ttsBtn = document.getElementById('tts-btn');
+        this.handsFreeBtn = document.getElementById('handsfree-btn');
         this.connectionStatus = document.getElementById('connection-status');
         this.emotionStatus = document.getElementById('emotion-status');
         this.emotionText = document.getElementById('emotion-text');
@@ -461,6 +463,9 @@ class ChatInterface {
 
         // TTS toggle
         this.ttsBtn.addEventListener('click', () => this.toggleTTS());
+
+        // Hands-free toggle
+        this.handsFreeBtn.addEventListener('click', () => this.toggleHandsFree());
 
         // Dashboard toggle
         if (this.dashboardToggle) {
@@ -890,9 +895,10 @@ class ChatInterface {
 
         this.messagesContainer.appendChild(messageEl);
 
-        // Sound + scroll handling
+        // Sound + scroll handling + tab notification
         if (role === 'assistant') {
             this.playNotificationSound(isProactive ? 'proactive' : 'message');
+            this._notifySwitchToChat();
             if (!this._userAtBottom) {
                 this._unreadCount++;
                 this._showScrollButton();
@@ -915,10 +921,7 @@ class ChatInterface {
                 }
             }
 
-            // Browser TTS fallback: speak if TTS enabled and no Piper audio played
-            if (this.ttsEnabled && !this._piperAudioPlayed && content) {
-                this.speakText(content);
-            }
+            // Piper TTS handles speech via MQTT - no browser fallback needed
             // Reset Piper audio flag
             this._piperAudioPlayed = false;
         }
@@ -962,10 +965,7 @@ class ChatInterface {
                     }
                 }
 
-                // Browser TTS fallback: speak if no Piper audio was played
-                if (this.ttsEnabled && !this._piperAudioPlayed) {
-                    this.speakText(this._streamingText);
-                }
+                // Piper TTS handles speech via MQTT - no browser fallback needed
             }
 
             if (window.avatarRenderer?.setState) window.avatarRenderer.setState('idle');
@@ -1267,11 +1267,35 @@ class ChatInterface {
             if ('speechSynthesis' in window) {
                 speechSynthesis.cancel();
             }
+                // Disabling TTS also disables hands-free
+                if (this.handsFreeMode) {
+                    this.handsFreeMode = false;
+                    this.handsFreeBtn.classList.remove('active');
+                }
         }
 
         const message = { type: 'tts_toggle', enabled: this.ttsEnabled };
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message));
+        }
+    }
+
+    toggleHandsFree() {
+        this.handsFreeMode = !this.handsFreeMode;
+
+        if (this.handsFreeMode) {
+            // Enable TTS if not already on
+            if (!this.ttsEnabled) {
+                this.toggleTTS();
+            }
+            this.handsFreeBtn.classList.add('active');
+            this.showNotification('Hands-free mode ON — speak naturally', 'success', 2000);
+            // Start listening immediately
+            this.startListening();
+        } else {
+            this.handsFreeBtn.classList.remove('active');
+            this.showNotification('Hands-free mode OFF', 'info', 2000);
+            this.stopListening();
         }
     }
 
@@ -1397,6 +1421,10 @@ class ChatInterface {
             this.isSpeaking = false;
             if (this.ttsBtn) this.ttsBtn.classList.remove('playing');
             if (window.avatarRenderer) window.avatarRenderer.setSpeaking(false);
+            // Hands-free: auto-restart listening after Cortana finishes speaking
+            if (this.handsFreeMode) {
+                setTimeout(() => this.startListening(), 400);
+            }
         };
 
         utterance.onerror = (event) => {
@@ -1404,6 +1432,10 @@ class ChatInterface {
             this.isSpeaking = false;
             if (this.ttsBtn) this.ttsBtn.classList.remove('playing');
             if (window.avatarRenderer) window.avatarRenderer.setSpeaking(false);
+            // Hands-free: still restart listening even on TTS error
+            if (this.handsFreeMode) {
+                setTimeout(() => this.startListening(), 400);
+            }
         };
 
         speechSynthesis.speak(utterance);
@@ -1482,10 +1514,69 @@ class ChatInterface {
             this.renderMemoryStats(data.memory_stats);
         }
 
+        // Update security / perception status
+        if (data.security) {
+            this.renderSecurity(data.security);
+        }
+
         // Update mood from status data
         if (data.mood && data.mood.emotion) {
             this.updateEmotion(data.mood.emotion, data.mood.intensity || 0.5);
         }
+    }
+
+    renderSecurity(security) {
+        let container = document.getElementById('security-widget');
+        if (!container) {
+            const section = document.createElement('div');
+            section.className = 'dashboard-section';
+            section.innerHTML = '<div class="section-title">SECURITY</div><div class="security-widget" id="security-widget"></div>';
+            // Insert before service grid
+            const statsSection = document.getElementById('system-stats')?.closest('.dashboard-section');
+            if (statsSection) statsSection.parentNode.insertBefore(section, statsSection);
+            else document.getElementById('neural-dashboard')?.appendChild(section);
+            container = document.getElementById('security-widget');
+        }
+        if (!container) return;
+
+        const level = security.threat_level || 0;
+        const threats = security.active_threats || [];
+        const jack = security.jack_present;
+        const ambient = security.ambient_state || 'unknown';
+        const nodes = security.nodes || {};
+
+        const levelColor = level === 0 ? '#0f0' : level <= 3 ? '#ff0' : level <= 6 ? '#f80' : '#f00';
+        const levelLabel = level === 0 ? 'CLEAR' : level <= 3 ? 'LOW' : level <= 6 ? 'ELEVATED' : 'HIGH';
+
+        let html = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+            <div style="font-size:28px;font-weight:bold;color:${levelColor};text-shadow:0 0 10px ${levelColor}">${level}</div>
+            <div><div style="color:${levelColor};font-weight:bold;font-size:12px">${levelLabel}</div>
+            <div style="color:#888;font-size:11px">${ambient} · ${jack ? 'Jack present' : 'Jack away'}</div></div></div>`;
+
+        // Vision nodes
+        const nodeNames = Object.keys(nodes);
+        if (nodeNames.length > 0) {
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">';
+            for (const [name, info] of Object.entries(nodes)) {
+                if (name === 'network') continue;
+                const online = info.online;
+                const temp = info.temperature ? `${info.temperature}°C` : '';
+                html += `<div style="background:${online ? 'rgba(0,255,0,0.1)' : 'rgba(255,0,0,0.1)'};border:1px solid ${online ? '#0f04' : '#f004'};border-radius:4px;padding:3px 8px;font-size:11px">
+                    <span style="color:${online ? '#0f0' : '#f00'}">●</span> ${name} ${temp}</div>`;
+            }
+            html += '</div>';
+        }
+
+        // Active threats
+        if (threats.length > 0) {
+            html += '<div style="margin-top:4px">';
+            for (const t of threats.slice(0, 3)) {
+                html += `<div style="color:#f88;font-size:11px;padding:2px 0">⚠ ${t.type} (sev ${t.severity}) — ${t.source}</div>`;
+            }
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
     }
 
     renderGauges(stats) {
@@ -2067,12 +2158,463 @@ class ChatInterface {
             }
         }, 30000);
     }
+
+    // ========================================================
+    // HOME DASHBOARD TAB SYSTEM
+    // ========================================================
+
+    initTabSystem() {
+        this._activeTab = 'home';
+        this._homeRefreshInterval = null;
+        this._homeData = null;
+
+        const tabHome = document.getElementById('tab-home');
+        const tabChat = document.getElementById('tab-chat');
+
+        if (tabHome) {
+            tabHome.addEventListener('click', () => this.switchTab('home'));
+        }
+        if (tabChat) {
+            tabChat.addEventListener('click', () => this.switchTab('chat'));
+        }
+
+        // Quick action buttons
+        const qaTalk = document.getElementById('qa-talk');
+        const qaReminder = document.getElementById('qa-reminder');
+        const qaDiagnostic = document.getElementById('qa-diagnostic');
+        const qaNetscan = document.getElementById('qa-netscan');
+
+        if (qaTalk) {
+            qaTalk.addEventListener('click', () => {
+                this.switchTab('chat');
+                this.messageInput.focus();
+            });
+        }
+        if (qaReminder) {
+            qaReminder.addEventListener('click', () => {
+                this.switchTab('chat');
+                setTimeout(() => {
+                    this.messageInput.value = 'remind me ';
+                    this.messageInput.focus();
+                    this.charCount.textContent = this.messageInput.value.length;
+                }, 100);
+            });
+        }
+        if (qaDiagnostic) {
+            qaDiagnostic.addEventListener('click', () => {
+                this.switchTab('chat');
+                setTimeout(() => {
+                    this.messageInput.value = 'run a full diagnostic';
+                    this.messageInput.focus();
+                    this.charCount.textContent = this.messageInput.value.length;
+                }, 100);
+            });
+        }
+        if (qaNetscan) {
+            qaNetscan.addEventListener('click', () => {
+                this.switchTab('chat');
+                setTimeout(() => {
+                    this.messageInput.value = 'scan the network';
+                    this.messageInput.focus();
+                    this.charCount.textContent = this.messageInput.value.length;
+                }, 100);
+            });
+        }
+
+        // Network expandable toggle
+        const netToggle = document.getElementById('cc-network-toggle');
+        if (netToggle) {
+            netToggle.addEventListener('click', () => {
+                const section = document.getElementById('cc-network');
+                const detail = document.getElementById('cc-network-detail');
+                if (!section || !detail) return;
+                const expanded = section.getAttribute('data-expanded') === 'true';
+                section.setAttribute('data-expanded', expanded ? 'false' : 'true');
+                netToggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                detail.style.display = expanded ? 'none' : 'flex';
+            });
+        }
+
+        // Start on home tab, fetch initial data
+        this.switchTab('home');
+    }
+
+    switchTab(tab) {
+        this._activeTab = tab;
+
+        const homeView = document.getElementById('home-view');
+        const chatView = document.getElementById('chat-view');
+        const tabHome = document.getElementById('tab-home');
+        const tabChat = document.getElementById('tab-chat');
+
+        if (tab === 'home') {
+            if (homeView) homeView.style.display = 'flex';
+            if (chatView) chatView.style.display = 'none';
+            if (tabHome) tabHome.classList.add('tab-bar__tab--active');
+            if (tabChat) tabChat.classList.remove('tab-bar__tab--active');
+            this._startHomeRefresh();
+        } else {
+            if (homeView) homeView.style.display = 'none';
+            if (chatView) chatView.style.display = 'flex';
+            if (tabHome) tabHome.classList.remove('tab-bar__tab--active');
+            if (tabChat) tabChat.classList.add('tab-bar__tab--active');
+            this._stopHomeRefresh();
+            // Scroll to bottom when switching to chat
+            setTimeout(() => this.scrollToBottom(), 50);
+        }
+    }
+
+    _startHomeRefresh() {
+        this.fetchHomeData();
+        if (this._homeRefreshInterval) clearInterval(this._homeRefreshInterval);
+        this._homeRefreshInterval = setInterval(() => {
+            if (this._activeTab === 'home') {
+                this.fetchHomeData();
+            }
+        }, 15000);
+    }
+
+    _stopHomeRefresh() {
+        if (this._homeRefreshInterval) {
+            clearInterval(this._homeRefreshInterval);
+            this._homeRefreshInterval = null;
+        }
+    }
+
+    async fetchHomeData() {
+        try {
+            const resp = await fetch('/api/status');
+            if (resp.ok) {
+                const data = await resp.json();
+                this._homeData = data;
+                this.renderHomeCards(data);
+            }
+        } catch (e) {
+            console.error('[Home] Failed to fetch status:', e);
+        }
+    }
+
+    renderHomeCards(data) {
+        this._renderCCHero(data.security);
+        this._renderCCThreats(data.security);
+        this._renderCCVitals(data.stats);
+        this._renderCCWeather(data.weather);
+        this._renderCCMood(data.mood);
+        this._renderCCNodes(data.security);
+        this._renderCCNetwork(data.network_devices, data.security);
+        this._renderCCReminders(data.reminders);
+    }
+
+    // ---- Hero: Threat Level Arc ----
+    _renderCCHero(security) {
+        const levelEl = document.getElementById('cc-threat-level');
+        const labelEl = document.getElementById('cc-threat-label');
+        const arcFill = document.getElementById('cc-arc-fill');
+        const jackEl = document.getElementById('cc-jack-status');
+        const ambientEl = document.getElementById('cc-ambient-status');
+
+        if (!levelEl) return;
+
+        const level = (security && security.threat_level) || 0;
+        const jack = security ? security.jack_present : null;
+        const ambient = (security && security.ambient_state) || 'unknown';
+
+        // Color + label
+        let color, statusLabel;
+        if (level === 0) { color = '#00ff00'; statusLabel = 'ALL CLEAR'; }
+        else if (level <= 3) { color = '#00ff00'; statusLabel = 'ALL CLEAR'; }
+        else if (level <= 6) { color = '#ffaa00'; statusLabel = 'ELEVATED'; }
+        else { color = '#ff0066'; statusLabel = 'CRITICAL'; }
+
+        // Level number
+        levelEl.textContent = level;
+        levelEl.style.color = color;
+
+        // Status label
+        if (labelEl) {
+            labelEl.textContent = statusLabel;
+            labelEl.style.color = color;
+        }
+
+        // Arc fill: total arc path length is ~251 (semicircle r=80)
+        if (arcFill) {
+            const totalLen = 251;
+            const fillAmount = (level / 10) * totalLen;
+            arcFill.style.strokeDasharray = totalLen;
+            arcFill.style.strokeDashoffset = totalLen - fillAmount;
+            arcFill.style.stroke = color;
+        }
+
+        // Jack status
+        if (jackEl) {
+            const jackDotClass = jack ? 'cc-dot--green' : (jack === false ? 'cc-dot--red' : 'cc-dot--dim');
+            const jackText = jack ? 'JACK HOME' : (jack === false ? 'JACK AWAY' : 'JACK --');
+            jackEl.innerHTML = `<span class="cc-dot ${jackDotClass}"></span>${jackText}`;
+        }
+
+        // Ambient
+        if (ambientEl) {
+            ambientEl.innerHTML = `<span class="cc-dot cc-dot--cyan"></span>${this.escapeHtml(ambient.toUpperCase())}`;
+        }
+    }
+
+    // ---- Active Threats ----
+    _renderCCThreats(security) {
+        const section = document.getElementById('cc-threats');
+        const list = document.getElementById('cc-threats-list');
+        if (!section || !list) return;
+
+        const threats = (security && security.active_threats) || [];
+
+        if (threats.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        let html = '';
+        for (const t of threats.slice(0, 5)) {
+            const loc = t.location ? this.escapeHtml(t.location) : '';
+            html += `<div class="cc-threat-row">
+                <span class="cc-threat-sev">${t.severity || '?'}</span>
+                <span class="cc-threat-desc">${this.escapeHtml(t.type || 'unknown')} &mdash; ${this.escapeHtml(t.source || '')}</span>
+                ${loc ? `<span class="cc-threat-loc">${loc}</span>` : ''}
+            </div>`;
+        }
+        list.innerHTML = html;
+    }
+
+    // ---- System Vitals ----
+    _renderCCVitals(stats) {
+        if (!stats) return;
+
+        const barColor = (pct) => pct <= 60 ? '#00ff00' : pct <= 80 ? '#ffaa00' : '#ff0066';
+
+        // GPU
+        let gpuPct = 0;
+        if (stats.gpu) {
+            const m = stats.gpu.match(/(\d+)%/);
+            if (m) gpuPct = parseInt(m[1]);
+        }
+        const gpuVal = document.getElementById('cc-gpu-val');
+        const gpuFill = document.getElementById('cc-gpu-fill');
+        if (gpuVal) { gpuVal.textContent = this.escapeHtml(stats.gpu || '--'); gpuVal.style.color = barColor(gpuPct); }
+        if (gpuFill) { gpuFill.style.width = gpuPct + '%'; gpuFill.style.background = barColor(gpuPct); gpuFill.style.boxShadow = '0 0 6px ' + barColor(gpuPct); }
+
+        // RAM
+        let ramPct = 0;
+        if (stats.ram) {
+            const m = stats.ram.match(/([\d.]+)G?\/([\d.]+)G?/);
+            if (m) ramPct = Math.round((parseFloat(m[1]) / parseFloat(m[2])) * 100);
+        }
+        const ramVal = document.getElementById('cc-ram-val');
+        const ramFill = document.getElementById('cc-ram-fill');
+        if (ramVal) { ramVal.textContent = this.escapeHtml(stats.ram || '--'); ramVal.style.color = barColor(ramPct); }
+        if (ramFill) { ramFill.style.width = ramPct + '%'; ramFill.style.background = barColor(ramPct); ramFill.style.boxShadow = '0 0 6px ' + barColor(ramPct); }
+
+        // Disk
+        let diskPct = 0;
+        if (stats.disk) {
+            const m = stats.disk.match(/(\d+)%/);
+            if (m) diskPct = parseInt(m[1]);
+        }
+        const diskVal = document.getElementById('cc-disk-val');
+        const diskFill = document.getElementById('cc-disk-fill');
+        if (diskVal) { diskVal.textContent = this.escapeHtml(stats.disk || '--'); diskVal.style.color = barColor(diskPct); }
+        if (diskFill) { diskFill.style.width = diskPct + '%'; diskFill.style.background = barColor(diskPct); diskFill.style.boxShadow = '0 0 6px ' + barColor(diskPct); }
+
+        // Uptime
+        const uptimeEl = document.getElementById('cc-uptime');
+        if (uptimeEl && stats.uptime) {
+            uptimeEl.innerHTML = 'UPTIME <strong>' + this.escapeHtml(stats.uptime) + '</strong>';
+        }
+    }
+
+    // ---- Weather ----
+    _renderCCWeather(weather) {
+        const iconEl = document.getElementById('cc-weather-icon');
+        const tempEl = document.getElementById('cc-weather-temp');
+        const detailEl = document.getElementById('cc-weather-detail');
+
+        if (!iconEl || !tempEl) return;
+
+        if (!weather || !weather.temp) {
+            iconEl.textContent = '--';
+            tempEl.textContent = '--';
+            if (detailEl) detailEl.textContent = 'NO DATA';
+            return;
+        }
+
+        // Weather icon
+        let icon = '\u{1F321}';
+        const condLower = (weather.condition || '').toLowerCase();
+        if (condLower.includes('clear') || condLower.includes('sunny')) icon = '\u{2600}\u{FE0F}';
+        else if (condLower.includes('cloud') || condLower.includes('overcast')) icon = '\u{2601}\u{FE0F}';
+        else if (condLower.includes('rain') || condLower.includes('drizzle')) icon = '\u{1F327}\u{FE0F}';
+        else if (condLower.includes('storm') || condLower.includes('thunder')) icon = '\u{26C8}\u{FE0F}';
+        else if (condLower.includes('snow')) icon = '\u{2744}\u{FE0F}';
+        else if (condLower.includes('fog') || condLower.includes('mist')) icon = '\u{1F32B}\u{FE0F}';
+
+        iconEl.textContent = icon;
+        tempEl.textContent = this.escapeHtml(weather.temp);
+
+        if (detailEl) {
+            const parts = [];
+            if (weather.condition) parts.push(this.escapeHtml(weather.condition));
+            if (weather.humidity) parts.push('H: ' + this.escapeHtml(weather.humidity));
+            if (weather.wind) parts.push('W: ' + this.escapeHtml(weather.wind));
+            detailEl.innerHTML = parts.join(' &middot; ');
+        }
+    }
+
+    // ---- Mood ----
+    _renderCCMood(mood) {
+        if (!mood) return;
+
+        const emotion = (mood.emotion || 'neutral').toLowerCase();
+        const valence = mood.valence != null ? mood.valence : 0.5;
+
+        const emojiMap = {
+            joy: '\u{1F60A}', happiness: '\u{1F60A}', sadness: '\u{1F614}',
+            anger: '\u{1F620}', curiosity: '\u{1F914}', playful: '\u{1F609}',
+            affection: '\u{2764}\u{FE0F}', confidence: '\u{2B50}', neutral: '\u{26AA}',
+            fear: '\u{1F628}', surprise: '\u{1F632}', disgust: '\u{1F612}',
+            contemplative: '\u{1F914}', excited: '\u{1F929}'
+        };
+
+        const emoji = emojiMap[emotion] || '\u{26AA}';
+        const valencePercent = Math.round(valence * 100);
+
+        const emojiEl = document.getElementById('cc-mood-emoji');
+        const labelEl = document.getElementById('cc-mood-label');
+        const fillEl = document.getElementById('cc-mood-fill');
+
+        if (emojiEl) emojiEl.textContent = emoji;
+        if (labelEl) labelEl.textContent = emotion.toUpperCase();
+        if (fillEl) fillEl.style.width = valencePercent + '%';
+    }
+
+    // ---- Vision Nodes ----
+    _renderCCNodes(security) {
+        const list = document.getElementById('cc-nodes-list');
+        if (!list) return;
+
+        const nodes = (security && security.nodes) || {};
+        const nodeNames = Object.keys(nodes).filter(n => n !== 'network');
+
+        if (nodeNames.length === 0) {
+            list.innerHTML = '<span class="cc-muted">NO VISION NODES</span>';
+            return;
+        }
+
+        let html = '';
+        for (const name of nodeNames) {
+            const info = nodes[name];
+            const online = info.online;
+            const temp = info.temperature ? `${Math.round(info.temperature)}\u00B0C` : '';
+            const cpu = info.cpu_percent != null ? `CPU ${info.cpu_percent}%` : '';
+            const meta = [temp, cpu].filter(Boolean).join(' / ');
+
+            html += `<div class="cc-node-row">
+                <span class="cc-dot ${online ? 'cc-dot--green' : 'cc-dot--red'}"></span>
+                <div class="cc-node-row__info">
+                    <div class="cc-node-row__name">${this.escapeHtml(name)}</div>
+                    ${meta ? `<div class="cc-node-row__meta">${this.escapeHtml(meta)}</div>` : ''}
+                </div>
+                <span class="cc-node-row__badge cc-node-row__badge--${online ? 'online' : 'offline'}">${online ? 'ONLINE' : 'OFFLINE'}</span>
+            </div>`;
+        }
+
+        list.innerHTML = html;
+    }
+
+    // ---- Network ----
+    _renderCCNetwork(devices, security) {
+        const countEl = document.getElementById('cc-network-count');
+        const detailEl = document.getElementById('cc-network-detail');
+
+        if (!countEl) return;
+
+        const devs = devices || [];
+        const netInfo = (security && security.nodes && security.nodes.network) || {};
+        const total = netInfo.device_count || devs.length;
+        const known = netInfo.known_count || devs.filter(d => d.known).length;
+
+        countEl.textContent = `${total} DEVICES (${known} KNOWN)`;
+
+        if (detailEl && devs.length > 0) {
+            // Sort: known first, then by name/ip
+            const sorted = [...devs].sort((a, b) => {
+                if (a.known !== b.known) return a.known ? -1 : 1;
+                return (a.name || a.hostname || a.ip || '').localeCompare(b.name || b.hostname || b.ip || '');
+            });
+
+            let html = '';
+            for (const d of sorted.slice(0, 30)) {
+                const name = d.name || d.hostname || 'Unknown';
+                const knownClass = d.known ? 'cc-net-device--known' : '';
+                const dotClass = d.known ? 'cc-dot--green' : 'cc-dot--yellow';
+                html += `<div class="cc-net-device ${knownClass}">
+                    <span class="cc-dot ${dotClass}"></span>
+                    <span class="cc-net-device__name">${this.escapeHtml(name)}</span>
+                    <span class="cc-net-device__ip">${this.escapeHtml(d.ip || '')}</span>
+                </div>`;
+            }
+            detailEl.innerHTML = html;
+        }
+    }
+
+    // ---- Reminders ----
+    _renderCCReminders(reminders) {
+        const list = document.getElementById('cc-reminders-list');
+        if (!list) return;
+
+        if (!reminders || reminders.length === 0) {
+            list.innerHTML = '<span class="cc-muted">NO ACTIVE REMINDERS</span>';
+            return;
+        }
+
+        let html = '';
+        for (const r of reminders) {
+            const remaining = r.remaining || 0;
+            let timeStr;
+            if (remaining < 60) timeStr = 'NOW';
+            else if (remaining < 3600) timeStr = Math.round(remaining / 60) + 'm';
+            else if (remaining < 86400) timeStr = Math.round(remaining / 3600) + 'h';
+            else timeStr = Math.round(remaining / 86400) + 'd';
+
+            const isUrgent = remaining < 900;
+            html += `<div class="cc-reminder-row${isUrgent ? ' cc-reminder-row--urgent' : ''}">
+                <span class="cc-reminder-row__text">${this.escapeHtml(r.text || 'Reminder')}</span>
+                <span class="cc-reminder-row__time">${timeStr}</span>
+            </div>`;
+        }
+
+        list.innerHTML = html;
+    }
+
+    // Switch to chat tab (used by incoming message handler)
+    _notifySwitchToChat() {
+        // If a new message comes in while on home tab, show indicator on chat tab
+        const tabChat = document.getElementById('tab-chat');
+        if (this._activeTab === 'home' && tabChat) {
+            tabChat.style.color = 'var(--color-accent)';
+            tabChat.style.textShadow = '0 0 8px rgba(0,255,0,0.5)';
+            // Reset glow when switching to chat
+            const resetGlow = () => {
+                tabChat.style.color = '';
+                tabChat.style.textShadow = '';
+            };
+            tabChat.addEventListener('click', resetGlow, { once: true });
+        }
+    }
 }
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.chatInterface = new ChatInterface();
     window.chatInterface.startKeepAlive();
+    window.chatInterface.initTabSystem();
 
     // Auto-report avatar diagnostics when model loads
     window.onAvatarDiagnostic = (diag) => {

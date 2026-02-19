@@ -934,20 +934,16 @@ class ConversationOrchestrator(SentientService):
             self.active_conversations[conversation_id] = context
             self.last_activity[user_id] = time.time()
 
-            # Step 0: Get Cortana's current mood
-            mood = await self._get_mood()
+            # Steps 0-2: Fetch all context in parallel (independent calls)
+            mood, core_memory, memories, world_state = await asyncio.gather(
+                self._get_mood(),
+                self._get_core_memory(),
+                self._get_relevant_memories(user_text, user_id),
+                self._get_world_state(),
+            )
             mood_context = self._mood_to_context(mood)
-
-            # Step 0.5: Get core memory (facts about Jack)
-            core_memory = await self._get_core_memory()
             core_facts = self._format_core_facts(core_memory)
-
-            # Step 1: Get relevant memories
-            memories = await self._get_relevant_memories(user_text, user_id)
             self.logger.debug(f"Retrieved {len(memories)} relevant memories")
-
-            # Step 2: Get world state
-            world_state = await self._get_world_state()
             self.logger.debug(f"World state: {len(world_state)} elements")
 
             # Step 2.5: Check if user is requesting a system operation
@@ -1032,19 +1028,15 @@ class ConversationOrchestrator(SentientService):
             # Step 4: Publish response
             await self._publish_response(context, response, suggestions=suggestions)
 
-            # Step 4.5: Update mood based on response emotion
+            # Steps 4.5-6: Post-response tasks in parallel (independent)
             detected_emotion = response.emotion or self._detect_emotion_from_text(response.text)
-            await self._update_mood(detected_emotion, response.text)
-
-            # Step 5: Store interaction (use original user_text, not mood/tool-augmented version)
-            await self._store_interaction(context, response, original_text=user_text)
-
-            # Step 5.5: Auto-extract facts from user's message
-            await self._auto_extract_facts(user_text, user_id)
-
-            # Step 6: Update conversation stats
             response_time_ms = (time.time() - response_start) * 1000
-            await self._update_conversation_stats(user_id, response_time_ms)
+            await asyncio.gather(
+                self._update_mood(detected_emotion, response.text),
+                self._store_interaction(context, response, original_text=user_text),
+                self._auto_extract_facts(user_text, user_id),
+                self._update_conversation_stats(user_id, response_time_ms),
+            )
 
             # Update state
             if voice_mode:
@@ -1356,7 +1348,7 @@ class ConversationOrchestrator(SentientService):
         """Update conversation statistics in Redis."""
         try:
             today = datetime.now().strftime('%Y-%m-%d')
-            pipe = self.redis.pipeline()
+            pipe = self.redis_client.pipeline()
 
             # Daily message count
             daily_key = f"stats:messages:{today}"
@@ -1387,7 +1379,7 @@ class ConversationOrchestrator(SentientService):
         """Get conversation statistics."""
         try:
             today = datetime.now().strftime('%Y-%m-%d')
-            pipe = self.redis.pipeline()
+            pipe = self.redis_client.pipeline()
             pipe.get(f"stats:messages:{today}")
             pipe.get("stats:messages:total")
             pipe.scard(f"stats:users:{today}")

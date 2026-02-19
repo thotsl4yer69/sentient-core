@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Cortana">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="static/styles.css?v=20260217h">
+    <link rel="stylesheet" href="static/styles.css?v=20260219b">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
@@ -114,73 +114,238 @@
             </div>
         </aside>
 
-        <!-- Chat area -->
-        <main class="chat-container">
-            <!-- Messages -->
-            <div class="messages" id="messages">
-                <!-- Messages will be inserted here -->
-            </div>
+        <!-- ============================================
+             HOME DASHBOARD VIEW — COMMAND CENTER
+             ============================================ -->
+        <div id="home-view" class="home-view">
+            <div class="home-scroll">
 
-            <!-- Thinking indicator -->
-            <div class="thinking-indicator" id="thinking-indicator" style="display: none;">
-                <div class="thinking-dots">
-                    <div class="thinking-icon">
-                        <div class="brain-pulse"></div>
-                    </div>
-                    <div class="thinking-text">
-                        <span class="thinking-label">CORTANA IS PROCESSING</span>
-                        <div class="thinking-stage" id="thinking-stage"></div>
-                    </div>
-                </div>
-                <div class="thinking-progress">
-                    <div class="thinking-progress-bar"></div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Input area -->
-        <footer class="input-area">
-            <div class="input-container">
-                <div class="input-wrapper">
-                    <textarea
-                        id="message-input"
-                        placeholder="TRANSMIT MESSAGE TO CORTANA..."
-                        rows="1"
-                        maxlength="2000"
-                    ></textarea>
-                    <div class="char-counter">
-                        <span id="char-count">0</span>/2000
-                    </div>
-                </div>
-
-                <div class="input-controls">
-                    <button class="btn btn-voice" id="voice-btn" title="Voice Input">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                            <line x1="12" y1="19" x2="12" y2="23"/>
-                            <line x1="8" y1="23" x2="16" y2="23"/>
+                <!-- HERO: Threat Level Arc -->
+                <section class="cc-hero" id="cc-hero">
+                    <div class="cc-hero__arc-wrap">
+                        <svg class="cc-hero__arc" viewBox="0 0 200 120" aria-hidden="true">
+                            <path class="cc-hero__arc-bg" d="M20,110 A80,80 0 0,1 180,110" fill="none" stroke-width="10" stroke-linecap="round"/>
+                            <path class="cc-hero__arc-fill" id="cc-arc-fill" d="M20,110 A80,80 0 0,1 180,110" fill="none" stroke-width="10" stroke-linecap="round"/>
                         </svg>
-                    </button>
+                        <div class="cc-hero__level" id="cc-threat-level">0</div>
+                    </div>
+                    <div class="cc-hero__status" id="cc-threat-label">SCANNING...</div>
+                    <div class="cc-hero__meta">
+                        <span class="cc-hero__tag" id="cc-jack-status">
+                            <span class="cc-dot cc-dot--dim"></span>JACK --
+                        </span>
+                        <span class="cc-hero__tag" id="cc-ambient-status">
+                            <span class="cc-dot cc-dot--dim"></span>--
+                        </span>
+                    </div>
+                </section>
 
-                    <button class="btn btn-tts" id="tts-btn" title="Toggle Voice Output">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                        </svg>
-                    </button>
+                <!-- ACTIVE THREATS (conditionally visible) -->
+                <section class="cc-threats" id="cc-threats" style="display:none;">
+                    <div class="cc-section-label">ACTIVE THREATS</div>
+                    <div class="cc-threats__list" id="cc-threats-list"></div>
+                </section>
 
-                    <button class="btn btn-send" id="send-btn" title="Send Message">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="22" y1="2" x2="11" y2="13"/>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                        </svg>
-                        <span class="btn-text">TRANSMIT</span>
+                <!-- SYSTEM VITALS -->
+                <section class="cc-vitals" id="cc-vitals">
+                    <div class="cc-section-label">SYSTEM VITALS</div>
+                    <div class="cc-vitals__grid" id="cc-vitals-grid">
+                        <div class="cc-vital" id="cc-vital-gpu">
+                            <div class="cc-vital__head"><span class="cc-vital__name">GPU</span><span class="cc-vital__val" id="cc-gpu-val">--</span></div>
+                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-gpu-fill"></div></div>
+                        </div>
+                        <div class="cc-vital" id="cc-vital-ram">
+                            <div class="cc-vital__head"><span class="cc-vital__name">RAM</span><span class="cc-vital__val" id="cc-ram-val">--</span></div>
+                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-ram-fill"></div></div>
+                        </div>
+                        <div class="cc-vital" id="cc-vital-disk">
+                            <div class="cc-vital__head"><span class="cc-vital__name">DISK</span><span class="cc-vital__val" id="cc-disk-val">--</span></div>
+                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-disk-fill"></div></div>
+                        </div>
+                    </div>
+                    <div class="cc-uptime" id="cc-uptime">UPTIME --</div>
+                </section>
+
+                <!-- WEATHER + MOOD side-by-side -->
+                <section class="cc-duo">
+                    <div class="cc-duo__panel cc-panel-weather" id="cc-weather">
+                        <div class="cc-section-label">WEATHER</div>
+                        <div class="cc-weather__body" id="cc-weather-body">
+                            <span class="cc-weather__icon" id="cc-weather-icon">--</span>
+                            <span class="cc-weather__temp" id="cc-weather-temp">--</span>
+                        </div>
+                        <div class="cc-weather__detail" id="cc-weather-detail"></div>
+                    </div>
+                    <div class="cc-duo__panel cc-panel-mood" id="cc-mood">
+                        <div class="cc-section-label">CORTANA MOOD</div>
+                        <div class="cc-mood__body">
+                            <span class="cc-mood__emoji" id="cc-mood-emoji">&#9711;</span>
+                            <span class="cc-mood__label" id="cc-mood-label">NEUTRAL</span>
+                        </div>
+                        <div class="cc-mood__bar-wrap">
+                            <div class="cc-mood__bar-fill" id="cc-mood-fill" style="width:50%"></div>
+                        </div>
+                        <div class="cc-mood__bar-labels"><span>NEG</span><span>POS</span></div>
+                    </div>
+                </section>
+
+                <!-- VISION NODES -->
+                <section class="cc-nodes" id="cc-nodes">
+                    <div class="cc-section-label">VISION NODES</div>
+                    <div class="cc-nodes__list" id="cc-nodes-list">
+                        <span class="cc-muted">SCANNING...</span>
+                    </div>
+                </section>
+
+                <!-- NETWORK -->
+                <section class="cc-network" id="cc-network">
+                    <button class="cc-network__summary" id="cc-network-toggle" aria-expanded="false">
+                        <div class="cc-section-label" style="margin:0">NETWORK</div>
+                        <span class="cc-network__count" id="cc-network-count">-- DEVICES</span>
+                        <svg class="cc-network__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                </div>
+                    <div class="cc-network__detail" id="cc-network-detail" style="display:none;"></div>
+                </section>
+
+                <!-- REMINDERS -->
+                <section class="cc-reminders" id="cc-reminders">
+                    <div class="cc-section-label">REMINDERS</div>
+                    <div class="cc-reminders__list" id="cc-reminders-list">
+                        <span class="cc-muted">NO ACTIVE REMINDERS</span>
+                    </div>
+                </section>
+
+                <!-- QUICK ACTIONS -->
+                <section class="cc-actions">
+                    <button class="cc-action-btn" id="qa-talk">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <span>TALK TO CORTANA</span>
+                    </button>
+                    <button class="cc-action-btn" id="qa-reminder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        <span>SET REMINDER</span>
+                    </button>
+                    <button class="cc-action-btn" id="qa-diagnostic">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <span>SYSTEM CHECK</span>
+                    </button>
+                    <button class="cc-action-btn" id="qa-netscan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+                        <span>NETWORK SCAN</span>
+                    </button>
+                </section>
+
             </div>
-        </footer>
+        </div>
+
+        <!-- ============================================
+             CHAT VIEW (wraps existing chat + input)
+             ============================================ -->
+        <div id="chat-view" class="chat-view" style="display:none;">
+            <!-- Chat area -->
+            <main class="chat-container">
+                <!-- Messages -->
+                <div class="messages" id="messages">
+                    <!-- Messages will be inserted here -->
+                </div>
+
+                <!-- Thinking indicator -->
+                <div class="thinking-indicator" id="thinking-indicator" style="display: none;">
+                    <div class="thinking-dots">
+                        <div class="thinking-icon">
+                            <div class="brain-pulse"></div>
+                        </div>
+                        <div class="thinking-text">
+                            <span class="thinking-label">CORTANA IS PROCESSING</span>
+                            <div class="thinking-stage" id="thinking-stage"></div>
+                        </div>
+                    </div>
+                    <div class="thinking-progress">
+                        <div class="thinking-progress-bar"></div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Input area -->
+            <footer class="input-area">
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <textarea
+                            id="message-input"
+                            placeholder="TRANSMIT MESSAGE TO CORTANA..."
+                            rows="1"
+                            maxlength="2000"
+                        ></textarea>
+                        <div class="char-counter">
+                            <span id="char-count">0</span>/2000
+                        </div>
+                    </div>
+
+                    <div class="input-controls">
+                        <button class="btn btn-voice btn-labeled" id="voice-btn" title="Voice Input">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/>
+                                <line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                            <span class="btn-label">VOICE</span>
+                        </button>
+
+                        <button class="btn btn-tts btn-labeled" id="tts-btn" title="Toggle Voice Output">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                            </svg>
+                            <span class="btn-label">TTS</span>
+                        </button>
+
+                        <button class="btn btn-handsfree btn-labeled" id="handsfree-btn" title="Hands-Free Mode">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                            </svg>
+                            <span class="btn-label">HANDS-FREE</span>
+                        </button>
+
+                        <button class="btn btn-send" id="send-btn" title="Send Message">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"/>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                            </svg>
+                            <span class="btn-text">TRANSMIT</span>
+                        </button>
+                    </div>
+                </div>
+            </footer>
+        </div>
+
+        <!-- ============================================
+             BOTTOM TAB BAR
+             ============================================ -->
+        <nav class="tab-bar" id="tab-bar">
+            <button class="tab-bar__tab tab-bar__tab--active" id="tab-home" data-tab="home" aria-label="Home Dashboard">
+                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <span class="tab-bar__label">HOME</span>
+            </button>
+            <button class="tab-bar__tab" id="tab-chat" data-tab="chat" aria-label="Chat with Cortana">
+                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span class="tab-bar__label">CHAT</span>
+            </button>
+            <button class="tab-bar__tab" id="tab-vision" onclick="window.location.href='/vision'" aria-label="Vision Feeds">
+                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                </svg>
+                <span class="tab-bar__label">VISION</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Audio element for voice recording -->
@@ -192,9 +357,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
     <!-- Scripts -->
-    <script src="static/avatar-hologram.js?v=20260217h"></script>
-    <script src="static/neural-bg.js?v=20260217h"></script>
-    <script src="static/app.js?v=20260217h"></script>
+    <script src="static/avatar-hologram.js?v=20260219b"></script>
+    <script src="static/neural-bg.js?v=20260219b"></script>
+    <script src="static/app.js?v=20260219b"></script>
 
     <!-- Service Worker Registration -->
     <script>

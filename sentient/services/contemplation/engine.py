@@ -266,8 +266,9 @@ EXPRESSION_MARKERS = [
 class OllamaClient:
     """Async client for Ollama API"""
 
-    def __init__(self, host: str = "http://localhost:11434"):
+    def __init__(self, host: str = "http://localhost:11434", num_ctx: int = 2048):
         self.host = host.rstrip('/')
+        self.num_ctx = num_ctx
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -297,6 +298,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_ctx": self.num_ctx,
             }
         }
 
@@ -361,6 +363,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_ctx": self.num_ctx,
             }
         }
 
@@ -454,6 +457,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_ctx": self.num_ctx,
             }
         }
 
@@ -627,7 +631,7 @@ class ContemplationEngine:
         personality_file = personality_dir / "cortana_core.txt"
 
         # Initialize components
-        self.ollama = OllamaClient(self.ollama_host)
+        self.ollama = OllamaClient(self.ollama_host, num_ctx=cfg.ollama.num_ctx)
         self.memory = MemoryStore(memory_file, self.max_memory_entries)
 
         # MQTT client for publishing
@@ -982,13 +986,14 @@ class ContemplationEngine:
                     clean_text = re.sub(r'^\*[^*]+\*\s*', '', clean_text)
 
         # Determine tone from content
-        if any(word in text.lower() for word in ['worried', 'concerned', 'anxious', 'afraid']):
+        text_lower = text.lower()
+        if any(word in text_lower for word in ['worried', 'concerned', 'anxious', 'afraid']):
             hints.tone = "concerned"
-        elif any(word in text.lower() for word in ['happy', 'excited', 'wonderful', 'great', 'love']):
+        elif any(word in text_lower for word in ['happy', 'excited', 'wonderful', 'great', 'love']):
             hints.tone = "warm"
-        elif any(word in text.lower() for word in ['funny', 'silly', 'haha', 'joke', 'tease']):
+        elif any(word in text_lower for word in ['funny', 'silly', 'haha', 'joke', 'tease']):
             hints.tone = "playful"
-        elif any(word in text.lower() for word in ['think', 'consider', 'ponder', 'wonder']):
+        elif any(word in text_lower for word in ['think', 'consider', 'ponder', 'wonder']):
             hints.tone = "thoughtful"
 
         # Determine pacing from punctuation and structure
@@ -1000,42 +1005,47 @@ class ContemplationEngine:
         return clean_text, hints
 
     async def _classify_emotion(self, response: str) -> EmotionState:
-        """Classify emotion from the synthesized response"""
-        prompt = EMOTION_CLASSIFICATION_PROMPT.format(response=response)
+        """Classify emotion from the synthesized response using keyword heuristics.
 
-        result = await self.ollama.generate(
-            model=self.model,
-            prompt=prompt,
-            temperature=0.1,  # Low temperature for consistent classification
-            max_tokens=150,
-            timeout=10.0
+        Replaces LLM call to save 3-5 seconds per deep contemplation on Jetson.
+        """
+        text = response.lower()
+
+        keywords = {
+            EmotionCategory.JOY:       ["happy", "joy", "excited", "wonderful", "great", "love", "amazing", "fantastic", "glad", "delighted", "pleased", "cheerful", "laugh"],
+            EmotionCategory.SADNESS:   ["sad", "sorry", "miss", "lonely", "disappointed", "grief", "cry", "hurt", "lost", "melancholy", "down", "unhappy"],
+            EmotionCategory.ANGER:     ["angry", "frustrated", "annoyed", "furious", "irritated", "mad", "rage", "hate", "outraged"],
+            EmotionCategory.FEAR:      ["scared", "afraid", "worried", "anxious", "nervous", "terrified", "dread", "panic", "uneasy"],
+            EmotionCategory.SURPRISE:  ["surprised", "wow", "unexpected", "shocking", "amazed", "astonished", "whoa", "oh"],
+            EmotionCategory.DISGUST:   ["disgusted", "gross", "revolting", "nasty", "horrible", "awful", "repulsed"],
+            EmotionCategory.CURIOSITY: ["curious", "wonder", "interesting", "fascinated", "intrigued", "hmm", "explore", "question", "why", "how"],
+            EmotionCategory.AFFECTION: ["care", "love", "adore", "cherish", "dear", "sweet", "warm", "fond", "tender", "hug", "miss you"],
+        }
+
+        traits = {
+            EmotionCategory.JOY:       dict(valence=0.7,  arousal=0.6, intensity=0.6),
+            EmotionCategory.SADNESS:   dict(valence=-0.6, arousal=0.3, intensity=0.5),
+            EmotionCategory.ANGER:     dict(valence=-0.7, arousal=0.8, intensity=0.7),
+            EmotionCategory.FEAR:      dict(valence=-0.5, arousal=0.7, intensity=0.6),
+            EmotionCategory.SURPRISE:  dict(valence=0.2,  arousal=0.7, intensity=0.5),
+            EmotionCategory.DISGUST:   dict(valence=-0.6, arousal=0.5, intensity=0.5),
+            EmotionCategory.CURIOSITY: dict(valence=0.3,  arousal=0.5, intensity=0.4),
+            EmotionCategory.AFFECTION: dict(valence=0.8,  arousal=0.4, intensity=0.6),
+            EmotionCategory.NEUTRAL:   dict(valence=0.0,  arousal=0.3, intensity=0.2),
+        }
+
+        scores = {cat: sum(1 for kw in kws if kw in text) for cat, kws in keywords.items()}
+        best_cat = max(scores, key=lambda c: scores[c])
+        primary = best_cat if scores[best_cat] > 0 else EmotionCategory.NEUTRAL
+
+        t = traits[primary]
+        return EmotionState(
+            primary=primary,
+            valence=t["valence"],
+            arousal=t["arousal"],
+            intensity=t["intensity"],
+            confidence=0.7,
         )
-
-        try:
-            # Parse JSON response - try multiple regex patterns for robustness
-            json_match = re.search(r'\{[^{}]*(?:"[^"]*"[^{}]*)*\}', result)
-            if json_match:
-                data = json.loads(json_match.group())
-
-                primary_str = data.get("primary", "neutral").lower()
-                try:
-                    primary = EmotionCategory(primary_str)
-                except ValueError:
-                    primary = EmotionCategory.NEUTRAL
-
-                return EmotionState(
-                    primary=primary,
-                    valence=max(-1, min(1, float(data.get("valence", 0.0)))),
-                    arousal=max(0, min(1, float(data.get("arousal", 0.3)))),
-                    intensity=max(0, min(1, float(data.get("intensity", 0.3)))),
-                    confidence=0.8
-                )
-        except Exception as e:
-            logger.debug(f"Emotion classification parse failed: {e}")
-            logger.debug(f"Raw classification result: {result}")
-
-        # Default neutral emotion with minimal confidence
-        return EmotionState(confidence=0.3)
 
     async def contemplate(
         self,

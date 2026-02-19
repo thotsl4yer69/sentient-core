@@ -207,10 +207,30 @@ async def get_system_status() -> dict:
     except Exception:
         pass
 
+    # Security / Perception state
+    security = {}
+    try:
+        result = subprocess.run(
+            ['curl', '-s', 'localhost:8003/state'],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            perception = json.loads(result.stdout.strip())
+            security = {
+                'threat_level': perception.get('threat_level', 0),
+                'active_threats': perception.get('active_threats', []),
+                'jack_present': perception.get('jack_present', False),
+                'ambient_state': perception.get('ambient_state', 'unknown'),
+                'nodes': perception.get('system_health', {}),
+            }
+    except Exception:
+        pass
+
     return {
         'services': services, 'stats': stats, 'mood': mood,
         'network_devices': network_devices, 'weather': weather,
-        'reminders': reminders, 'memory_stats': memory_stats
+        'reminders': reminders, 'memory_stats': memory_stats,
+        'security': security
     }
 
 
@@ -453,8 +473,10 @@ class MQTTBridge:
                     await client.subscribe("sentient/avatar/speaking")
                     await client.subscribe("sentient/persona/state")
                     await client.subscribe("sentient/persona/thought_stream")
+                    await client.subscribe("sentient/perception/state")
+                    await client.subscribe("sentient/sensor/vision/+/detection")
 
-                    logger.info("MQTT bridge subscribed to conversation topics")
+                    logger.info("MQTT bridge subscribed to conversation + vision topics")
 
                     # Broadcast connection status
                     await self.connection_manager.broadcast({
@@ -607,6 +629,45 @@ class MQTTBridge:
                 "type": "speaking",
                 "active": payload.get("speaking", False),
                 "text": payload.get("text", "")
+            })
+
+        elif topic == "sentient/perception/state":
+            # Forward perception world state to vision WS clients
+            await broadcast_vision_update({
+                "type": "perception_update",
+                "threat_level": payload.get("threat_level", 0),
+                "active_threats": payload.get("active_threats", []),
+                "jack_present": payload.get("jack_present", False),
+                "ambient_state": payload.get("ambient_state", "unknown"),
+                "nodes": {
+                    node_id: {"online": node["online"], "detections": node["detections"], "fps": node["fps"]}
+                    for node_id, node in _vision_nodes.items()
+                },
+            })
+
+        elif topic.startswith("sentient/sensor/vision/"):
+            # Vision node detection — update node state and forward to vision WS
+            parts = topic.split("/")
+            source = parts[3] if len(parts) > 3 else "unknown"
+            objects = payload.get("objects", [])
+            ts = datetime.now().isoformat()
+
+            # Update node tracking
+            if source == "pi1" and "pi1" in _vision_nodes:
+                _vision_nodes["pi1"]["detections"] = objects
+                _vision_nodes["pi1"]["last_seen"] = ts
+                _vision_nodes["pi1"]["online"] = True
+            elif source.startswith("rdkx5") and "rdkx5" in _vision_nodes:
+                cam = source.replace("rdkx5_", "") if "_" in source else "unknown"
+                _vision_nodes["rdkx5"]["detections"][cam] = objects
+                _vision_nodes["rdkx5"]["last_seen"] = ts
+                _vision_nodes["rdkx5"]["online"] = True
+
+            await broadcast_vision_update({
+                "type": "detection",
+                "source": source,
+                "objects": objects,
+                "timestamp": ts,
             })
 
     async def send_user_message(self, text: str):
@@ -1008,6 +1069,132 @@ async def insights_search(q: str = "", limit: int = 20):
 async def insights_relationship():
     """Proxy to memory service /relationship"""
     return await _proxy_memory_api("/relationship")
+
+
+# ── Vision Page & API ──────────────────────────────────────────────────────
+
+@app.get("/vision", response_class=HTMLResponse)
+async def vision_page():
+    """Serve the vision/perception page"""
+    vision_path = os.path.join(os.path.dirname(__file__), "vision.html")
+    if os.path.exists(vision_path):
+        return FileResponse(vision_path)
+    return HTMLResponse("<h1>Vision page not found</h1>")
+
+
+# Vision node registry: node_id -> {ip, port, online, last_seen, detections}
+_vision_nodes = {
+    "pi1": {"ip": "192.168.1.219", "port": 8090, "online": False, "last_seen": None, "detections": [], "fps": 0},
+    "rdkx5": {"ip": "192.168.1.208", "port": 8090, "online": False, "last_seen": None, "detections": {}, "fps": 0},
+}
+
+
+@app.get("/api/vision/status")
+async def vision_status():
+    """Get combined perception + vision node status"""
+    import aiohttp
+
+    # Get perception state
+    perception = {}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:8003/state", timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                if resp.status == 200:
+                    perception = await resp.json()
+    except Exception as e:
+        logger.debug(f"Perception API unreachable: {e}")
+
+    # Check node reachability (non-blocking ping via TCP)
+    for node_id, node in _vision_nodes.items():
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(node["ip"], node["port"]),
+                timeout=1.5
+            )
+            writer.close()
+            await writer.wait_closed()
+            node["online"] = True
+        except Exception:
+            node["online"] = False
+
+    return {
+        "perception_online": bool(perception),
+        "threat_level": perception.get("threat_level", 0),
+        "active_threats": perception.get("active_threats", []),
+        "jack_present": perception.get("jack_present", False),
+        "ambient_state": perception.get("ambient_state", "unknown"),
+        "nodes": {
+            node_id: {
+                "online": node["online"],
+                "ip": node["ip"],
+                "detections": node["detections"],
+                "fps": node["fps"],
+                "last_seen": node["last_seen"],
+            }
+            for node_id, node in _vision_nodes.items()
+        },
+    }
+
+
+from starlette.responses import StreamingResponse
+import httpx
+
+
+@app.get("/api/vision/stream/{node_id}")
+async def vision_stream(node_id: str):
+    """Proxy MJPEG stream from a vision node"""
+    # Map node_id to actual address
+    if node_id == "pi1":
+        target = "http://192.168.1.219:8090/stream"
+    elif node_id.startswith("rdkx5"):
+        cam = node_id.replace("rdkx5_", "") if "_" in node_id else "front_door"
+        target = f"http://192.168.1.208:8090/stream?camera={cam}"
+    else:
+        raise HTTPException(status_code=404, detail="Unknown node")
+
+    async def proxy_stream():
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream("GET", target, timeout=httpx.Timeout(5.0, read=None)) as resp:
+                    async for chunk in resp.aiter_bytes(chunk_size=8192):
+                        yield chunk
+        except Exception as e:
+            logger.debug(f"Vision stream proxy error for {node_id}: {e}")
+
+    return StreamingResponse(
+        proxy_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+# WebSocket for vision real-time updates
+_vision_ws_clients: Set[WebSocket] = set()
+
+
+@app.websocket("/ws/vision")
+async def vision_ws(websocket: WebSocket):
+    """WebSocket for real-time vision/perception updates"""
+    await websocket.accept()
+    _vision_ws_clients.add(websocket)
+    try:
+        while True:
+            # Keep alive — client doesn't send much
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _vision_ws_clients.discard(websocket)
+
+
+async def broadcast_vision_update(data: dict):
+    """Send vision update to all connected vision WS clients"""
+    dead = set()
+    for ws_client in _vision_ws_clients:
+        try:
+            await ws_client.send_json(data)
+        except Exception:
+            dead.add(ws_client)
+    _vision_ws_clients.difference_update(dead)
 
 
 if __name__ == "__main__":

@@ -117,6 +117,8 @@ class MemorySystem:
         self._memory_metadata = {}  # Dict[memory_id -> {interaction_data, tags_data, stored_at}]
         self._cache_loaded = False
         self._cache_lock = asyncio.Lock()
+        self._pending_embeddings = []  # List of (embedding_array, memory_id, metadata) tuples
+        self._pending_flush_size = 10  # Flush to matrix when this many pending
 
         logger.info("MemorySystem initialized")
 
@@ -421,23 +423,49 @@ class MemorySystem:
             "tags": tags
         }, mqtt_client)
 
-        # Append to in-memory cache
+        # Append to pending buffer (avoids O(n) vstack per store)
         if self._cache_loaded and self._embedding_matrix is not None:
             try:
                 new_emb = np.array(embedding, dtype=np.float32).reshape(1, -1)
                 norm = np.linalg.norm(new_emb)
                 if norm > 0:
                     new_emb = new_emb / norm
-                self._embedding_matrix = np.vstack([self._embedding_matrix, new_emb])
-                self._memory_ids.append(interaction.interaction_id)
-                self._memory_metadata[interaction.interaction_id] = {
+                self._pending_embeddings.append((new_emb, interaction.interaction_id, {
                     'interaction': asdict(interaction),
                     'tags': tags,
                     'stored_at': time.time()
-                }
-                logger.debug(f"Cache updated: {len(self._memory_ids)} memories")
+                }))
+                logger.debug(f"Pending buffer: {len(self._pending_embeddings)} items")
+
+                # Flush when buffer is full
+                if len(self._pending_embeddings) >= self._pending_flush_size:
+                    await self._flush_pending_embeddings()
             except Exception as e:
                 logger.warning(f"Failed to update embedding cache: {e}")
+
+    async def _flush_pending_embeddings(self):
+        """Flush pending embeddings into the main matrix (single vstack)."""
+        if not self._pending_embeddings:
+            return
+
+        try:
+            new_arrays = [emb for emb, _, _ in self._pending_embeddings]
+            new_matrix = np.vstack(new_arrays)
+
+            if self._embedding_matrix is not None and len(self._embedding_matrix) > 0:
+                self._embedding_matrix = np.vstack([self._embedding_matrix, new_matrix])
+            else:
+                self._embedding_matrix = new_matrix
+
+            for _, memory_id, metadata in self._pending_embeddings:
+                self._memory_ids.append(memory_id)
+                self._memory_metadata[memory_id] = metadata
+
+            logger.info(f"Flushed {len(self._pending_embeddings)} embeddings to matrix (total: {len(self._memory_ids)})")
+            self._pending_embeddings = []
+
+        except Exception as e:
+            logger.error(f"Failed to flush pending embeddings: {e}")
 
     async def get_working_context(self, limit: int = 20) -> List[Interaction]:
         """
@@ -485,6 +513,10 @@ class MemorySystem:
             return await self._search_memories_sequential(
                 query, limit, min_similarity, tags, time_range, mqtt_client
             )
+
+        # Flush any pending embeddings before searching
+        if self._pending_embeddings:
+            await self._flush_pending_embeddings()
 
         # Generate and normalize query embedding
         query_embedding = np.array(await self._encode_text(query), dtype=np.float32)
