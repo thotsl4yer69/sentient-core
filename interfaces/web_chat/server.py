@@ -223,6 +223,7 @@ async def get_system_status() -> dict:
                     'online': ninfo.get('online', False),
                     'detections': ninfo.get('detections', []),
                     'last_seen': ninfo.get('last_seen'),
+                    'fps': ninfo.get('fps', 0),
                 }
             security = {
                 'threat_level': perception.get('threat_level', 0),
@@ -672,25 +673,30 @@ class MQTTBridge:
             ts = datetime.now().isoformat()
 
             # Update node tracking
+            fps = payload.get("fps", 0)
             if source == "jetson" and "jetson" in _vision_nodes:
                 _vision_nodes["jetson"]["detections"] = objects
                 _vision_nodes["jetson"]["last_seen"] = ts
                 _vision_nodes["jetson"]["online"] = True
+                _vision_nodes["jetson"]["fps"] = fps
             elif source == "pi1" and "pi1" in _vision_nodes:
                 _vision_nodes["pi1"]["detections"] = objects
                 _vision_nodes["pi1"]["last_seen"] = ts
                 _vision_nodes["pi1"]["online"] = True
+                _vision_nodes["pi1"]["fps"] = fps
             elif source.startswith("rdkx5") and "rdkx5" in _vision_nodes:
                 cam = source.replace("rdkx5_", "") if "_" in source else "unknown"
                 _vision_nodes["rdkx5"]["detections"][cam] = objects
                 _vision_nodes["rdkx5"]["last_seen"] = ts
                 _vision_nodes["rdkx5"]["online"] = True
+                _vision_nodes["rdkx5"]["fps"] = fps
 
             await broadcast_vision_update({
                 "type": "detection",
                 "source": source,
                 "objects": objects,
                 "timestamp": ts,
+                "fps": fps,
             })
 
     async def send_user_message(self, text: str):
@@ -767,11 +773,27 @@ mqtt_bridge = MQTTBridge(
 )
 
 
+async def vision_node_staleness_checker():
+    """Mark vision nodes offline if no MQTT messages for 10 seconds."""
+    while True:
+        await asyncio.sleep(5)
+        now = datetime.now()
+        for nid, ninfo in _vision_nodes.items():
+            if ninfo.get("online") and ninfo.get("last_seen"):
+                try:
+                    last = datetime.fromisoformat(ninfo["last_seen"])
+                    if (now - last).total_seconds() > 10:
+                        ninfo["online"] = False
+                except (ValueError, TypeError):
+                    pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
     mqtt_task = asyncio.create_task(mqtt_bridge.start(connection_manager))
+    asyncio.create_task(vision_node_staleness_checker())
     logger.info("Web chat server started")
 
     yield

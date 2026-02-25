@@ -6,6 +6,7 @@ let snapshotTimer = null;
 let feedActive = false;
 let activeNode = 'jetson';
 let detectionCount = 0;
+let nodeFps = {};
 
 export function init() {
   connectVisionWs();
@@ -50,6 +51,14 @@ function startSnapshotPolling() {
   const overlay = document.getElementById('vision-feed-overlay');
   if (!img) return;
 
+  let firstLoad = true;
+
+  // Show connecting state immediately
+  if (overlay) {
+    overlay.style.display = 'flex';
+    overlay.innerHTML = '<span class="vision-feed-placeholder">CONNECTING...</span>';
+  }
+
   function loadSnapshot() {
     const ts = Date.now();
     const testImg = new Image();
@@ -58,13 +67,17 @@ function startSnapshotPolling() {
       img.style.display = 'block';
       if (overlay) overlay.style.display = 'none';
       feedActive = true;
+      firstLoad = false;
     };
     testImg.onerror = () => {
       if (overlay) {
         overlay.style.display = 'flex';
-        overlay.innerHTML = '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
+        overlay.innerHTML = firstLoad
+          ? '<span class="vision-feed-placeholder">CONNECTING...</span>'
+          : '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
       }
       feedActive = false;
+      firstLoad = false;
     };
     testImg.src = `/api/vision/snapshot/${activeNode}?t=${ts}`;
   }
@@ -76,6 +89,14 @@ function startSnapshotPolling() {
 function switchFeed(node) {
   activeNode = node;
   clearInterval(snapshotTimer);
+
+  // Clear detection list immediately on switch
+  const listEl = document.getElementById('vision-detection-list');
+  if (listEl) listEl.innerHTML = '<span class="text-muted">SWITCHING...</span>';
+  detectionCount = 0;
+  const badge = document.getElementById('vision-det-badge');
+  if (badge) badge.style.display = 'none';
+
   startSnapshotPolling();
 
   // Update active highlight
@@ -88,6 +109,7 @@ function switchFeed(node) {
 function handleDetection(data) {
   const objects = data.objects || [];
   detectionCount = objects.length;
+  nodeFps[data.source] = data.fps || 0;
 
   // Update badge
   const badge = document.getElementById('vision-det-badge');
@@ -104,7 +126,9 @@ function handleDetection(data) {
     return;
   }
 
-  listEl.innerHTML = objects.slice(0, 8).map(obj => {
+  const total = objects.length;
+  const shown = Math.min(total, 8);
+  listEl.innerHTML = objects.slice(0, shown).map(obj => {
     const conf = Math.round((obj.confidence || 0) * 100);
     const cls = escapeHtml(obj.class || 'unknown');
     const barColor = conf > 70 ? '#22c55e' : conf > 40 ? '#f59e0b' : '#ef4444';
@@ -114,6 +138,9 @@ function handleDetection(data) {
       <span class="detection-conf">${conf}%</span>
     </div>`;
   }).join('');
+  if (total > shown) {
+    listEl.innerHTML += `<div class="detection-overflow">+${total - shown} more</div>`;
+  }
 }
 
 // ── Status update (from /api/status polling) ──
@@ -176,10 +203,30 @@ export function update(data) {
         const online = info.online;
         const dets = Array.isArray(info.detections) ? info.detections.length : 0;
         const isActive = name === activeNode;
-        const meta = online ? `${dets} obj` : '';
+        const fps = nodeFps[name] || (info.fps || 0);
+
+        // Last-seen age for offline nodes
+        const lastSeen = info.last_seen;
+        let ageText = '';
+        if (lastSeen && !online) {
+          const ago = Math.round((Date.now() - new Date(lastSeen).getTime()) / 1000);
+          if (ago < 60) ageText = `${ago}s ago`;
+          else if (ago < 3600) ageText = `${Math.round(ago / 60)}m ago`;
+          else ageText = `${Math.round(ago / 3600)}h ago`;
+        }
+
+        let metaParts = [];
+        if (online) {
+          metaParts.push(`${dets} obj`);
+          if (fps) metaParts.push(`<span class="node-fps">${fps} FPS</span>`);
+        } else if (ageText) {
+          metaParts.push(`<span class="node-age">${ageText}</span>`);
+        }
+        const metaHtml = metaParts.length ? `<div class="node-meta">${metaParts.join(' • ')}</div>` : '';
+
         return `<div class="node-row ${isActive ? 'active-node' : ''}" data-node="${escapeHtml(name)}" style="cursor:pointer">
           <span class="status-dot ${online ? 'connected' : 'disconnected'}"></span>
-          <div class="node-info"><div class="node-name">${escapeHtml(name.toUpperCase())}</div>${meta ? `<div class="node-meta">${escapeHtml(meta)}</div>` : ''}</div>
+          <div class="node-info"><div class="node-name">${escapeHtml(name.toUpperCase())}</div>${metaHtml}</div>
           <span class="node-badge ${online ? 'online' : 'offline'}">${online ? 'ONLINE' : 'OFFLINE'}</span>
         </div>`;
       }).join('');

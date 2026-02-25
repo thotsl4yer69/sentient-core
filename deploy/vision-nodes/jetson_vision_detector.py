@@ -117,15 +117,39 @@ class YOLOv8Detector:
         self.model_w = input_shape[3]
         logger.info(f"Model loaded: input={self.model_w}x{self.model_h}")
 
+        # Preallocate preprocessing buffer — avoids per-frame allocation
+        self._input_buffer = np.zeros((1, 3, self.model_h, self.model_w), dtype=np.float32)
+        # Letterbox state (set each detect() call, used for bbox correction)
+        self._lb_scale = 1.0
+        self._lb_pad_x = 0
+        self._lb_pad_y = 0
+
     def detect(self, frame):
         """Run detection on a BGR frame. Returns list of detection dicts."""
         h, w = frame.shape[:2]
 
-        # Preprocess: resize, normalize, CHW, add batch
-        resized = cv2.resize(frame, (self.model_w, self.model_h))
-        blob = resized.astype(np.float32) / 255.0
-        blob = blob.transpose(2, 0, 1)
-        blob = np.expand_dims(blob, 0)
+        # Letterbox: scale to fit within model input preserving aspect ratio,
+        # then pad with gray (114) to reach exact model dimensions.
+        scale = min(self.model_w / w, self.model_h / h)
+        new_w = int(round(w * scale))
+        new_h = int(round(h * scale))
+        pad_x = (self.model_w - new_w) // 2
+        pad_y = (self.model_h - new_h) // 2
+
+        # Store for bbox correction
+        self._lb_scale = scale
+        self._lb_pad_x = pad_x
+        self._lb_pad_y = pad_y
+
+        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Write into preallocated buffer (fill gray, then copy resized region)
+        self._input_buffer[:] = 114.0 / 255.0
+        # resized is HWC BGR; convert to CHW float and place into padded region
+        region = resized.astype(np.float32) / 255.0  # (new_h, new_w, 3)
+        region_chw = region.transpose(2, 0, 1)        # (3, new_h, new_w)
+        self._input_buffer[0, :, pad_y:pad_y + new_h, pad_x:pad_x + new_w] = region_chw
+        blob = self._input_buffer
 
         # Inference
         outputs = self.session.run(None, {self.input_name: blob})
@@ -162,7 +186,6 @@ class YOLOv8Detector:
             return []
 
         indices = np.array(indices).flatten()
-        sx, sy = w / self.model_w, h / self.model_h
         detections = []
 
         for idx in indices:
@@ -170,15 +193,21 @@ class YOLOv8Detector:
             cls = int(class_ids[idx])
             conf = float(filtered_max[idx])
 
+            # Undo letterbox: subtract padding, divide by scale to get original-space coords
+            x1 = (float(cx - dw / 2) - self._lb_pad_x) / self._lb_scale
+            y1 = (float(cy - dh / 2) - self._lb_pad_y) / self._lb_scale
+            x2 = (float(cx + dw / 2) - self._lb_pad_x) / self._lb_scale
+            y2 = (float(cy + dh / 2) - self._lb_pad_y) / self._lb_scale
+
             detections.append({
                 "class": COCO_CLASSES[cls] if cls < 80 else f"class_{cls}",
                 "class_id": cls,
                 "confidence": round(conf, 3),
                 "bbox": {
-                    "x_min": max(0, round(float(cx - dw / 2) * sx)),
-                    "y_min": max(0, round(float(cy - dh / 2) * sy)),
-                    "x_max": min(w, round(float(cx + dw / 2) * sx)),
-                    "y_max": min(h, round(float(cy + dh / 2) * sy)),
+                    "x_min": max(0, round(x1)),
+                    "y_min": max(0, round(y1)),
+                    "x_max": min(w, round(x2)),
+                    "y_max": min(h, round(y2)),
                 }
             })
 
@@ -251,21 +280,24 @@ class JetsonVisionDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
         return frame
 
-    def publish_detections(self, detections):
-        """Publish detections via MQTT with throttling."""
+    def publish_detections(self, detections, fps=0.0):
+        """Publish detections via MQTT with throttling.
+
+        Always enforces the minimum interval — no burst on confidence flicker.
+        """
         if not self.mqtt_client:
             return
 
         now = time.time()
-        current_classes = {d["class"] for d in detections}
-
-        if current_classes != self.last_classes or (now - self.last_publish_time) >= MQTT_THROTTLE_S:
+        if (now - self.last_publish_time) >= MQTT_THROTTLE_S:
+            current_classes = {d["class"] for d in detections}
             payload = {
                 "camera_id": CAMERA_ID,
                 "location": LOCATION,
                 "timestamp": datetime.now().isoformat(),
                 "objects": detections,
                 "frame_count": self.frame_count,
+                "fps": round(fps, 1),
             }
             topic = f"sentient/sensor/vision/{CAMERA_ID}/detection"
             self.mqtt_client.publish(topic, json.dumps(payload), qos=0)
@@ -352,20 +384,22 @@ class JetsonVisionDetector:
                 # Run detection
                 detections = detector.detect(frame)
 
-                # Draw overlays for MJPEG
-                display_frame = self.draw_detections(frame.copy(), detections)
+                # Compute rolling FPS
+                elapsed = time.time() - fps_time
+                current_fps = fps_frames / elapsed if elapsed > 0 else 0.0
+
+                # Draw overlays and encode only when MJPEG server is active
                 if self.mjpeg_server:
+                    display_frame = self.draw_detections(frame.copy(), detections)
                     _, jpeg = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                     self.mjpeg_server.update_frame(jpeg.tobytes())
 
                 # Publish to MQTT
-                self.publish_detections(detections)
+                self.publish_detections(detections, fps=current_fps)
 
                 # Log FPS every 10 seconds
-                elapsed = time.time() - fps_time
                 if elapsed >= 10:
-                    fps = fps_frames / elapsed
-                    logger.info(f"FPS: {fps:.1f} | Detections: {len(detections)} | Frames: {self.frame_count}")
+                    logger.info(f"FPS: {current_fps:.1f} | Detections: {len(detections)} | Frames: {self.frame_count}")
                     fps_time = time.time()
                     fps_frames = 0
 

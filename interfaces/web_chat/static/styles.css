@@ -2219,3 +2219,22 @@ pre:hover .code-copy-btn {
     display: none;
   }
 }
+
+/* ── Vision panel additions ── */
+.detection-overflow {
+  text-align: center;
+  color: #666;
+  font-size: 0.7rem;
+  padding: 2px 0;
+  font-style: italic;
+}
+
+.node-meta .node-fps {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.node-meta .node-age {
+  color: #888;
+  font-size: 0.65rem;
+}
