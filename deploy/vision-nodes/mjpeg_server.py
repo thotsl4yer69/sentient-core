@@ -15,9 +15,14 @@ Usage:
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 
 class MJPEGHandler(BaseHTTPRequestHandler):
@@ -47,7 +52,8 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
         try:
             while True:
-                frame = self.server.current_frame
+                with self.server._frame_lock:
+                    frame = self.server.current_frame
                 if frame is not None:
                     self.wfile.write(b"--frame\r\n")
                     self.wfile.write(b"Content-Type: image/jpeg\r\n")
@@ -61,7 +67,8 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             pass
 
     def _snapshot(self):
-        frame = self.server.current_frame
+        with self.server._frame_lock:
+            frame = self.server.current_frame
         if frame is None:
             self.send_error(503, "No frame available")
             return
@@ -74,10 +81,12 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
     def _health(self):
         import json
+        with self.server._frame_lock:
+            has_frame = self.server.current_frame is not None
         data = json.dumps({
             "status": "ok",
-            "has_frame": self.server.current_frame is not None,
-            "fps": self.server.target_fps,
+            "has_frame": has_frame,
+            "fps": self.server._actual_fps,
         }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -96,19 +105,31 @@ class MJPEGHandler(BaseHTTPRequestHandler):
         self.wfile.write(html)
 
 
-class MJPEGServer(HTTPServer):
+class MJPEGServer(ThreadedHTTPServer):
     """Threaded MJPEG server with frame update support."""
 
     def __init__(self, port=8090, target_fps=10):
         self.current_frame = None
         self.target_fps = target_fps
         self._thread = None
+        self._frame_lock = threading.Lock()
+        self._frame_count = 0
+        self._fps_time = time.time()
+        self._actual_fps = 0.0
         super().__init__(("0.0.0.0", port), MJPEGHandler)
         logger.info(f"MJPEG server initialized on port {port}")
 
     def update_frame(self, jpeg_bytes: bytes):
-        """Update the current frame (thread-safe, single reference swap)."""
-        self.current_frame = jpeg_bytes
+        """Update the current frame (thread-safe)."""
+        with self._frame_lock:
+            self.current_frame = jpeg_bytes
+        self._frame_count += 1
+        now = time.time()
+        elapsed = now - self._fps_time
+        if elapsed >= 2.0:
+            self._actual_fps = self._frame_count / elapsed
+            self._frame_count = 0
+            self._fps_time = now
 
     def start(self):
         """Start serving in a daemon thread."""

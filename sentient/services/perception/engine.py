@@ -222,6 +222,7 @@ class PerceptionLayer:
         self.rf_detections: Dict[str, Any] = {}
         self.system_status: Dict[str, Any] = {}
         self.active_threats: List[Threat] = []
+        self._known_cameras: set = set()
 
         # Components
         self.audio_monitor = AudioMonitor()
@@ -246,7 +247,12 @@ class PerceptionLayer:
             parts = topic.split('/')
             camera_id = parts[3] if len(parts) > 3 else "unknown"
 
-            logger.debug(f"Vision detection from {camera_id}: {payload}")
+            if camera_id not in self._known_cameras:
+                self._known_cameras.add(camera_id)
+                objects_preview = payload.get("objects", [])
+                logger.info(f"First detection from camera '{camera_id}': {len(objects_preview)} objects")
+            else:
+                logger.debug(f"Vision detection from {camera_id}: {payload}")
 
             self.vision_detections[camera_id] = {
                 "timestamp": datetime.now().isoformat(),
@@ -466,6 +472,27 @@ class PerceptionLayer:
                 'device_count': len(self.network_scanner.devices),
                 'known_count': sum(1 for d in self.network_scanner.devices.values() if d.known),
                 'summary': self.network_scanner.get_summary()
+            }
+
+        # Add vision node info to system health
+        for camera_id, detection in self.vision_detections.items():
+            data = detection.get("data", {})
+            ts = detection.get("timestamp", "")
+            objects = data.get("objects", [])
+            # Check staleness: mark offline if older than 15 seconds
+            online = True
+            if ts:
+                try:
+                    age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
+                    if age > 15:
+                        online = False
+                except (ValueError, TypeError):
+                    online = False
+            system_health[camera_id] = {
+                'online': online,
+                'detections': objects,
+                'fps': data.get("fps", 0),
+                'location': data.get("location", "unknown"),
             }
 
         world_state = WorldState(
