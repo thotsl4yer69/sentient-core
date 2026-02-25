@@ -307,6 +307,8 @@ class JetsonVisionDetector:
         fps_frames = 0
         fail_count = 0
         MAX_CONSECUTIVE_FAILS = 30  # ~3 seconds of failures triggers restart
+        PIPELINE_RESTART_FRAMES = 10000  # Restart camera every 10K frames to prevent Argus DMA leak
+        pipeline_frame_count = 0
 
         while self.running:
             try:
@@ -331,6 +333,21 @@ class JetsonVisionDetector:
                 fail_count = 0
                 self.frame_count += 1
                 fps_frames += 1
+                pipeline_frame_count += 1
+
+                # Periodic pipeline restart to prevent Argus DMA memory leak
+                if pipeline_frame_count >= PIPELINE_RESTART_FRAMES:
+                    logger.info(f"Preventive camera restart at {self.frame_count} frames")
+                    cap.release()
+                    time.sleep(2)
+                    cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+                    if not cap.isOpened():
+                        logger.error("Camera restart failed!")
+                        time.sleep(5)
+                        cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+                    pipeline_frame_count = 0
+                    time.sleep(1)
+                    continue
 
                 # Run detection
                 detections = detector.detect(frame)
