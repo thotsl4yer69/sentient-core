@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 import aiomqtt
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
@@ -1148,16 +1148,10 @@ import httpx
 @app.get("/api/vision/stream/{node_id}")
 async def vision_stream(node_id: str):
     """Proxy MJPEG stream from a vision node"""
-    # Map node_id to actual address
-    if node_id == "jetson":
-        target = "http://127.0.0.1:8091/stream"
-    elif node_id == "pi1":
-        target = "http://192.168.1.219:8090/stream"
-    elif node_id.startswith("rdkx5"):
-        cam = node_id.replace("rdkx5_", "") if "_" in node_id else "front_door"
-        target = f"http://192.168.1.208:8090/stream?camera={cam}"
-    else:
+    node = _vision_nodes.get(node_id)
+    if not node:
         raise HTTPException(status_code=404, detail="Unknown node")
+    target = f"http://{node['ip']}:{node['port']}/stream"
 
     async def proxy_stream():
         try:
@@ -1172,6 +1166,30 @@ async def vision_stream(node_id: str):
         proxy_stream(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.get("/api/vision/snapshot/{node_id}")
+async def vision_snapshot(node_id: str):
+    """Get a single JPEG snapshot from a vision node"""
+    node = _vision_nodes.get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Unknown node")
+    target = f"http://{node['ip']}:{node['port']}/snapshot"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(target, timeout=3.0)
+            if resp.status_code == 200:
+                return Response(
+                    content=resp.content,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"},
+                )
+            raise HTTPException(status_code=resp.status_code, detail="Snapshot failed")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Node timeout")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # WebSocket for vision real-time updates

@@ -1480,6 +1480,26 @@ pre:hover .code-copy-btn {
   font-size: 10px;
 }
 
+.det-badge {
+  background: var(--accent-primary);
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.node-row.active-node {
+  background: rgba(0, 212, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
+
 /* ── Network Panel ── */
 .network-summary {
   font-family: var(--font-display);

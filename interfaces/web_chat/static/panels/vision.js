@@ -2,76 +2,99 @@ import { escapeHtml } from '../utils.js';
 
 let visionWs = null;
 let reconnectTimer = null;
-let currentDetections = [];
+let snapshotTimer = null;
 let feedActive = false;
+let activeNode = 'jetson';
+let detectionCount = 0;
 
 export function init() {
   connectVisionWs();
-  startFeed();
+  startSnapshotPolling();
+
+  // Node switcher clicks
+  document.getElementById('vision-nodes')?.addEventListener('click', (e) => {
+    const row = e.target.closest('.node-row');
+    if (row) {
+      const name = row.dataset.node;
+      if (name) switchFeed(name);
+    }
+  });
 }
 
+// ── Vision WebSocket ──
 function connectVisionWs() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${protocol}//${location.host}/ws/vision`;
 
   try {
     visionWs = new WebSocket(url);
-
-    visionWs.onopen = () => {
-      clearTimeout(reconnectTimer);
-    };
-
+    visionWs.onopen = () => clearTimeout(reconnectTimer);
     visionWs.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'detection') {
+        if (data.type === 'detection' && data.source === activeNode) {
           handleDetection(data);
         }
-      } catch (e) {
-        console.error('Vision WS parse error:', e);
-      }
+      } catch (e) { /* ignore */ }
     };
-
-    visionWs.onclose = () => {
-      reconnectTimer = setTimeout(connectVisionWs, 5000);
-    };
-
-    visionWs.onerror = () => {
-      visionWs.close();
-    };
+    visionWs.onclose = () => { reconnectTimer = setTimeout(connectVisionWs, 5000); };
+    visionWs.onerror = () => visionWs.close();
   } catch (e) {
     reconnectTimer = setTimeout(connectVisionWs, 5000);
   }
 }
 
-function startFeed() {
+// ── Snapshot Polling (more reliable than MJPEG proxy) ──
+function startSnapshotPolling() {
   const img = document.getElementById('vision-feed');
   const overlay = document.getElementById('vision-feed-overlay');
   if (!img) return;
 
-  // Try Jetson MJPEG stream via proxy
-  img.src = '/api/vision/stream/jetson';
-  img.onload = () => {
-    img.style.display = 'block';
-    if (overlay) overlay.style.display = 'none';
-    feedActive = true;
-  };
-  img.onerror = () => {
-    img.style.display = 'none';
-    if (overlay) {
-      overlay.style.display = 'flex';
-      overlay.innerHTML = '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
-    }
-    feedActive = false;
-    // Retry in 10s
-    setTimeout(startFeed, 10000);
-  };
+  function loadSnapshot() {
+    const ts = Date.now();
+    const testImg = new Image();
+    testImg.onload = () => {
+      img.src = testImg.src;
+      img.style.display = 'block';
+      if (overlay) overlay.style.display = 'none';
+      feedActive = true;
+    };
+    testImg.onerror = () => {
+      if (overlay) {
+        overlay.style.display = 'flex';
+        overlay.innerHTML = '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
+      }
+      feedActive = false;
+    };
+    testImg.src = `/api/vision/snapshot/${activeNode}?t=${ts}`;
+  }
+
+  loadSnapshot();
+  snapshotTimer = setInterval(loadSnapshot, 500);
 }
 
+function switchFeed(node) {
+  activeNode = node;
+  clearInterval(snapshotTimer);
+  startSnapshotPolling();
+
+  // Update active highlight
+  document.querySelectorAll('#vision-nodes .node-row').forEach(r => {
+    r.classList.toggle('active-node', r.dataset.node === node);
+  });
+}
+
+// ── Detection display ──
 function handleDetection(data) {
   const objects = data.objects || [];
-  const source = data.source || 'unknown';
-  currentDetections = objects;
+  detectionCount = objects.length;
+
+  // Update badge
+  const badge = document.getElementById('vision-det-badge');
+  if (badge) {
+    badge.textContent = detectionCount;
+    badge.style.display = detectionCount > 0 ? 'inline-block' : 'none';
+  }
 
   const listEl = document.getElementById('vision-detection-list');
   if (!listEl) return;
@@ -93,6 +116,7 @@ function handleDetection(data) {
   }).join('');
 }
 
+// ── Status update (from /api/status polling) ──
 export function update(data) {
   const security = data.security || {};
   const level = security.threat_level || 0;
@@ -140,7 +164,7 @@ export function update(data) {
     }
   }
 
-  // Vision nodes
+  // Vision nodes — clickable to switch feeds
   const nodesEl = document.getElementById('vision-nodes');
   if (nodesEl) {
     const nodeNames = Object.keys(nodes).filter(n => n !== 'network');
@@ -151,8 +175,9 @@ export function update(data) {
         const info = nodes[name];
         const online = info.online;
         const dets = Array.isArray(info.detections) ? info.detections.length : 0;
-        const meta = online ? `${dets} object${dets !== 1 ? 's' : ''}` : '';
-        return `<div class="node-row">
+        const isActive = name === activeNode;
+        const meta = online ? `${dets} obj` : '';
+        return `<div class="node-row ${isActive ? 'active-node' : ''}" data-node="${escapeHtml(name)}" style="cursor:pointer">
           <span class="status-dot ${online ? 'connected' : 'disconnected'}"></span>
           <div class="node-info"><div class="node-name">${escapeHtml(name.toUpperCase())}</div>${meta ? `<div class="node-meta">${escapeHtml(meta)}</div>` : ''}</div>
           <span class="node-badge ${online ? 'online' : 'offline'}">${online ? 'ONLINE' : 'OFFLINE'}</span>
@@ -163,9 +188,7 @@ export function update(data) {
 }
 
 export function destroy() {
-  if (visionWs) {
-    visionWs.close();
-    visionWs = null;
-  }
+  if (visionWs) { visionWs.close(); visionWs = null; }
   clearTimeout(reconnectTimer);
+  clearInterval(snapshotTimer);
 }
