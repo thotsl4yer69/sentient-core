@@ -1,14 +1,23 @@
-const CACHE_NAME = 'cortana-v4';
+const CACHE_NAME = 'cortana-v7';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
   '/',
   '/static/styles.css',
   '/static/app.js',
+  '/static/grid.js',
+  '/static/utils.js',
   '/static/avatar-hologram.js',
   '/static/neural-bg.js',
+  '/static/panels/chat.js',
+  '/static/panels/avatar.js',
+  '/static/panels/vitals.js',
+  '/static/panels/mood.js',
+  '/static/panels/vision.js',
+  '/static/panels/network.js',
+  '/static/panels/reminders.js',
   '/offline.html',
-  'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400&display=swap'
 ];
 
 // Install - precache critical assets

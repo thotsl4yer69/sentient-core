@@ -9,17 +9,17 @@
 
     // Configuration
     const CONFIG = {
-        particleCount: 50,
-        connectionDistance: 120,
-        baseSpeed: 0.3,
+        particleCount: 25,
+        connectionDistance: 100,
+        baseSpeed: 0.2,
         pulseSpeed: 1.5,
         pulseDuration: 500,
         fps: 30,
-        canvasOpacity: 0.4,
+        canvasOpacity: 0.25,
         colors: {
-            cyan: '#00ffff',
-            magenta: '#ff00ff',
-            white: '#ffffff'
+            cyan: '#00d4ff',
+            magenta: '#a855f7',
+            white: '#e2e8f0'
         }
     };
 
@@ -88,18 +88,14 @@
     }
 
     function initCanvas() {
-        canvas = document.createElement('canvas');
-        canvas.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            pointer-events: none;
-            opacity: ${CONFIG.canvasOpacity};
-        `;
-        document.body.prepend(canvas);
+        canvas = document.getElementById('neural-bg');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = 'neural-bg';
+            document.body.prepend(canvas);
+        }
+        // Styles are in CSS now, but ensure opacity override
+        canvas.style.opacity = CONFIG.canvasOpacity;
         ctx = canvas.getContext('2d');
 
         resizeCanvas();
@@ -198,16 +194,16 @@
 
     // Mood-reactive color presets
     const MOOD_COLORS = {
-        neutral:    { cyan: '#00ffff', magenta: '#ff00ff', white: '#ffffff' },
-        joy:        { cyan: '#ffff00', magenta: '#ff8800', white: '#ffffcc' },
-        curiosity:  { cyan: '#aa66ff', magenta: '#6644ff', white: '#ddccff' },
-        affection:  { cyan: '#ff66aa', magenta: '#ff3388', white: '#ffccdd' },
-        sadness:    { cyan: '#4488cc', magenta: '#335599', white: '#aabbcc' },
-        anger:      { cyan: '#ff3333', magenta: '#cc0000', white: '#ffaaaa' },
-        fear:       { cyan: '#ff6600', magenta: '#cc4400', white: '#ffcc88' },
-        surprise:   { cyan: '#00ffaa', magenta: '#00cc88', white: '#ccffee' },
-        confidence: { cyan: '#00ff66', magenta: '#00cc44', white: '#ccffcc' },
-        playful:    { cyan: '#ff00ff', magenta: '#ff66ff', white: '#ffccff' },
+        neutral:    { cyan: '#00d4ff', magenta: '#a855f7', white: '#e2e8f0' },
+        joy:        { cyan: '#22c55e', magenta: '#86efac', white: '#f0fdf4' },
+        curiosity:  { cyan: '#a855f7', magenta: '#7c3aed', white: '#ede9fe' },
+        affection:  { cyan: '#ec4899', magenta: '#f472b6', white: '#fce7f3' },
+        sadness:    { cyan: '#3b82f6', magenta: '#6366f1', white: '#dbeafe' },
+        anger:      { cyan: '#ef4444', magenta: '#dc2626', white: '#fee2e2' },
+        fear:       { cyan: '#f59e0b', magenta: '#d97706', white: '#fef3c7' },
+        surprise:   { cyan: '#06b6d4', magenta: '#0891b2', white: '#cffafe' },
+        confidence: { cyan: '#22c55e', magenta: '#16a34a', white: '#dcfce7' },
+        playful:    { cyan: '#d946ef', magenta: '#c026d3', white: '#fae8ff' },
     };
 
     window.setNeuralMood = function(emotion) {
