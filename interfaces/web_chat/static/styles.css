@@ -299,21 +299,129 @@ body {
   animation: toast-out 0.3s ease both;
 }
 
-/* ── Grid Container ── */
-.grid-container {
+/* ── Dashboard Grid (2-column: chat + sidebar) ── */
+.dashboard-grid {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
-  grid-template-areas:
-    "chat avatar vitals"
-    "chat avatar mood"
-    "vision network reminders";
-  gap: 6px;
-  padding: 6px;
+  grid-template-columns: 1.5fr 1fr;
+  grid-template-rows: 1fr;
+  gap: 8px;
+  padding: 8px;
   height: calc(100vh - var(--header-height));
   margin-top: var(--header-height);
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sidebar-vision {
+  flex: 4;
+  min-height: 0;
+}
+
+.sidebar-vision-body {
+  padding: 8px;
+}
+
+.sidebar-vision-body .vision-feed-wrap {
+  margin-bottom: 6px;
+}
+
+.quick-actions-panel {
+  flex: 3.5;
+  min-height: 0;
+}
+
+.quick-actions-body {
+  padding: 8px;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  height: 100%;
+}
+
+.quick-action-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.quick-action-btn:hover {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.1);
+}
+
+.quick-action-btn:active {
+  transform: scale(0.96);
+}
+
+.qa-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.qa-label {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ── Compact Status Bar ── */
+.status-summary-panel {
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.status-item .status-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* ── Chat Hero (full left column) ── */
+.panel-chat-hero {
+  min-height: 0;
 }
 
 /* ── Panels ── */
@@ -335,14 +443,7 @@ body {
   border-color: var(--border-glass-hover);
 }
 
-/* Grid areas */
-#panel-chat     { grid-area: chat; }
-#panel-avatar   { grid-area: avatar; }
-#panel-vitals   { grid-area: vitals; }
-#panel-mood     { grid-area: mood; }
-#panel-vision   { grid-area: vision; }
-#panel-network  { grid-area: network; }
-#panel-reminders { grid-area: reminders; }
+/* Grid areas (legacy — hidden panels no longer positioned) */
 
 /* Panel collapsed */
 .panel.collapsed .panel-body {
@@ -2167,26 +2268,34 @@ pre:hover .code-copy-btn {
 
 /* ── Responsive (mobile < 768px) ── */
 @media (max-width: 768px) {
-  .grid-container {
+  .dashboard-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: auto;
-    grid-template-areas: none;
+    grid-template-rows: 1fr auto;
     overflow-y: auto;
     overflow-x: hidden;
     height: calc(100vh - var(--header-height));
   }
 
-  .panel {
-    grid-area: unset !important;
-    min-height: 200px;
+  .panel-chat-hero {
+    min-height: 50vh;
   }
 
-  #panel-chat {
-    min-height: 400px;
+  .sidebar {
+    flex-direction: column;
+    gap: 6px;
   }
 
-  #panel-avatar {
-    min-height: 240px;
+  .sidebar-vision {
+    flex: none;
+    max-height: 260px;
+  }
+
+  .quick-actions-panel {
+    flex: none;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .header-center {
@@ -2199,10 +2308,6 @@ pre:hover .code-copy-btn {
 
   .logo-sub {
     display: none;
-  }
-
-  .service-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
 }
 

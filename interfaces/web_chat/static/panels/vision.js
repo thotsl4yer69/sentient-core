@@ -149,92 +149,29 @@ function handleDetection(data) {
 }
 
 // ── Status update (from /api/status polling) ──
+// v3.1: Simplified — threat bar, jack status, node list moved to compact status bar in app.js
 export function update(data) {
   const security = data.security || {};
   const level = security.threat_level || 0;
-  const threats = security.active_threats || [];
-  const jack = security.jack_present;
-  const ambient = security.ambient_state || 'unknown';
-  const nodes = security.nodes || {};
 
-  // Threat level
-  let color, label;
-  if (level <= 3) { color = '#22c55e'; label = 'ALL CLEAR'; }
-  else if (level <= 6) { color = '#f59e0b'; label = 'ELEVATED'; }
-  else { color = '#ef4444'; label = 'CRITICAL'; }
-
+  // Still update hidden elements so other code referencing them doesn't break
   const levelEl = document.getElementById('threat-level');
-  const labelEl = document.getElementById('threat-label');
-  const meterFill = document.getElementById('threat-meter-fill');
+  if (levelEl) levelEl.textContent = level;
 
-  if (levelEl) { levelEl.textContent = level; levelEl.style.color = color; }
-  if (labelEl) { labelEl.textContent = label; labelEl.style.color = color; }
-  if (meterFill) { meterFill.style.width = (level / 10 * 100) + '%'; meterFill.style.background = color; }
-
-  // Jack + ambient
-  const jackEl = document.getElementById('jack-status');
-  const ambientEl = document.getElementById('ambient-status');
-  if (jackEl) {
-    const dotClass = jack ? 'connected' : (jack === false ? 'disconnected' : 'dim');
-    const text = jack ? 'JACK HOME' : (jack === false ? 'JACK AWAY' : 'JACK --');
-    jackEl.innerHTML = `<span class="status-dot ${dotClass}"></span>${text}`;
-  }
-  if (ambientEl) {
-    ambientEl.innerHTML = `<span class="status-dot connected"></span>${escapeHtml(ambient.toUpperCase())}`;
-  }
-
-  // Active threats
-  const threatsEl = document.getElementById('vision-threats');
-  if (threatsEl) {
-    if (threats.length === 0) {
-      threatsEl.style.display = 'none';
-    } else {
-      threatsEl.style.display = 'block';
-      threatsEl.innerHTML = threats.slice(0, 5).map(t =>
-        `<div class="threat-row"><span class="threat-sev">${t.severity || '?'}</span><span>${escapeHtml(t.type || 'unknown')} — ${escapeHtml(t.source || '')}</span></div>`
-      ).join('');
-    }
-  }
-
-  // Vision nodes — clickable to switch feeds
-  const nodesEl = document.getElementById('vision-nodes');
-  if (nodesEl) {
-    const nodeNames = Object.keys(nodes).filter(n => n !== 'network');
-    if (nodeNames.length === 0) {
-      nodesEl.innerHTML = '<span class="text-muted">NO VISION NODES</span>';
-    } else {
-      nodesEl.innerHTML = nodeNames.map(name => {
-        const info = nodes[name];
-        const online = info.online;
-        const dets = Array.isArray(info.detections) ? info.detections.length : 0;
-        const isActive = name === activeNode;
-        const fps = nodeFps[name] || (info.fps || 0);
-
-        // Last-seen age for offline nodes
-        const lastSeen = info.last_seen;
-        let ageText = '';
-        if (lastSeen && !online) {
-          const ago = Math.round((Date.now() - new Date(lastSeen).getTime()) / 1000);
-          if (ago < 60) ageText = `${ago}s ago`;
-          else if (ago < 3600) ageText = `${Math.round(ago / 60)}m ago`;
-          else ageText = `${Math.round(ago / 3600)}h ago`;
-        }
-
-        let metaParts = [];
-        if (online) {
-          metaParts.push(`${dets} obj`);
-          if (fps) metaParts.push(`<span class="node-fps">${fps} FPS</span>`);
-        } else if (ageText) {
-          metaParts.push(`<span class="node-age">${ageText}</span>`);
-        }
-        const metaHtml = metaParts.length ? `<div class="node-meta">${metaParts.join(' • ')}</div>` : '';
-
-        return `<div class="node-row ${isActive ? 'active-node' : ''}" data-node="${escapeHtml(name)}" style="cursor:pointer">
-          <span class="status-dot ${online ? 'connected' : 'disconnected'}"></span>
-          <div class="node-info"><div class="node-name">${escapeHtml(name.toUpperCase())}</div>${metaHtml}</div>
-          <span class="node-badge ${online ? 'online' : 'offline'}">${online ? 'ONLINE' : 'OFFLINE'}</span>
-        </div>`;
-      }).join('');
+  // Update detection badge from status data (supplements WebSocket detections)
+  const nodes = security.nodes || {};
+  const nodeNames = Object.keys(nodes).filter(n => n !== 'network');
+  const currentNode = nodeNames.find(n => n === activeNode) || nodeNames[0];
+  if (currentNode && nodes[currentNode]?.online) {
+    const info = nodes[currentNode];
+    const dets = Array.isArray(info.detections) ? info.detections.length : 0;
+    if (dets > 0 && detectionCount === 0) {
+      // Update badge if we have status data but no WebSocket detections yet
+      const badge = document.getElementById('vision-det-badge');
+      if (badge) {
+        badge.textContent = dets;
+        badge.style.display = 'inline-block';
+      }
     }
   }
 }

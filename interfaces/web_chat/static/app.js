@@ -19,9 +19,9 @@ let statusRefreshInterval = null;
 
 // ==== INIT ====
 function init() {
-  // Initialize grid manager
-  grid = new GridManager('#grid-container');
-  grid.init();
+  // Grid manager disabled in v3.1 — fixed 2-column layout
+  // grid = new GridManager('#grid-container');
+  // grid.init();
 
   // Initialize all panels
   Object.values(panels).forEach(p => p.init());
@@ -183,6 +183,50 @@ function updateAllPanels(data) {
   if (data.mood?.emotion) {
     updateEmotion(data.mood.emotion, data.mood.intensity || 0.5);
   }
+
+  // ── Compact status bar updates ──
+  const security = data.security || {};
+
+  // Jack presence
+  const jackEl = document.getElementById('status-jack');
+  if (jackEl) {
+    const home = security.jack_present;
+    const dotClass = home ? 'connected' : (home === false ? 'disconnected' : 'dim');
+    const label = home ? 'HOME' : (home === false ? 'AWAY' : '--');
+    jackEl.innerHTML = `<span class="status-dot ${dotClass}"></span> JACK: ${label}`;
+  }
+
+  // Threat level
+  const threatEl = document.getElementById('status-threat');
+  if (threatEl) {
+    const lvl = security.threat_level || 0;
+    threatEl.textContent = `THREAT: ${lvl}`;
+    threatEl.style.color = lvl > 6 ? '#ef4444' : lvl > 3 ? '#f59e0b' : '#22c55e';
+  }
+
+  // Mood
+  const moodEl = document.getElementById('status-mood');
+  if (moodEl) {
+    const emotion = (data.mood || {}).emotion || 'neutral';
+    const emojis = {joy:'\u{1F60A}',sadness:'\u{1F622}',anger:'\u{1F624}',fear:'\u{1F628}',surprise:'\u{1F632}',disgust:'\u{1F922}',neutral:'\u{1F610}',curiosity:'\u{1F914}',affection:'\u{1F49C}'};
+    moodEl.textContent = `MOOD: ${emojis[emotion] || '\u{1F610}'} ${emotion.toUpperCase()}`;
+  }
+
+  // Camera / vision status
+  const camEl = document.getElementById('status-vision');
+  if (camEl) {
+    const nodes = security.nodes || {};
+    // Check any online node
+    const nodeNames = Object.keys(nodes).filter(n => n !== 'network');
+    const onlineNode = nodeNames.find(n => nodes[n]?.online);
+    if (onlineNode) {
+      const info = nodes[onlineNode];
+      const dets = Array.isArray(info.detections) ? info.detections.length : 0;
+      camEl.innerHTML = `<span class="status-dot connected"></span> CAM: ${dets} obj`;
+    } else {
+      camEl.innerHTML = `<span class="status-dot disconnected"></span> CAM: OFF`;
+    }
+  }
 }
 
 // ==== HEADER ====
@@ -229,30 +273,7 @@ function startClock() {
 }
 
 function setupHeaderControls() {
-  // Reset layout button
-  document.getElementById('reset-layout-btn')?.addEventListener('click', () => grid?.resetLayout());
-
-  // Preset switcher dropdown toggle
-  const presetBtn = document.getElementById('preset-switcher-btn');
-  const presetDropdown = document.getElementById('preset-dropdown');
-  if (presetBtn && presetDropdown) {
-    presetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      presetDropdown.classList.toggle('open');
-    });
-    document.addEventListener('click', () => presetDropdown.classList.remove('open'));
-  }
-
-  // Preset buttons
-  document.querySelectorAll('[data-preset]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      grid?.setPreset(btn.dataset.preset);
-      // Update active state
-      document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      presetDropdown?.classList.remove('open');
-    });
-  });
+  // Header controls removed in v3.1 dashboard redesign (fixed 2-column layout)
 }
 
 function setupKeyboardShortcuts() {
@@ -270,6 +291,20 @@ setInterval(() => {
     ws.send(JSON.stringify({ type: 'ping' }));
   }
 }, 30000);
+
+// ==== QUICK ACTIONS ====
+// Global function called by onclick handlers in quick action buttons
+window.sendQuickAction = function(prompt) {
+  const input = document.getElementById('message-input');
+  if (input) {
+    input.value = prompt;
+    input.focus();
+    // If the prompt is a complete question (doesn't end with space/preposition), auto-send
+    if (!prompt.endsWith(' ') && !prompt.endsWith(' for')) {
+      document.getElementById('send-btn')?.click();
+    }
+  }
+};
 
 // ==== BOOT ====
 document.addEventListener('DOMContentLoaded', init);

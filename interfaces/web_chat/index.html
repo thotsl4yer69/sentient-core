@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 
   <!-- App styles -->
-  <link rel="stylesheet" href="static/styles.css?v=8" />
+  <link rel="stylesheet" href="static/styles.css?v=11" />
 </head>
 <body>
 
@@ -40,40 +40,21 @@
   </div>
   <div class="header-right">
     <span id="system-time">--:--</span>
-    <span class="header-sep">|</span>
-    <div class="preset-switcher-wrap">
-      <button class="btn-icon header-btn" id="preset-switcher-btn" title="Switch Layout">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      </button>
-      <div class="preset-dropdown" id="preset-dropdown">
-        <button class="preset-option active" data-preset="default">Default (3-col)</button>
-        <button class="preset-option" data-preset="focus-chat">Focus Chat</button>
-        <button class="preset-option" data-preset="monitor">Monitor</button>
-      </div>
-    </div>
-    <button class="btn-icon header-btn" id="reset-layout-btn" title="Reset Layout">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-    </button>
-    <button class="btn-icon header-btn" id="settings-btn" title="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
   </div>
 </header>
 
 <div class="toast-container" id="toast-container"></div>
 
-<main id="grid-container" class="grid-container">
+<main id="grid-container" class="dashboard-grid">
 
-  <!-- CHAT -->
-  <section class="panel" id="panel-chat" data-panel="chat">
+  <!-- ====== LEFT COLUMN: CHAT (hero) ====== -->
+  <section class="panel panel-chat-hero" id="panel-chat" data-panel="chat">
     <div class="panel-header">
       <span class="panel-title">CHAT</span>
       <div class="panel-controls">
         <button class="panel-btn panel-search-btn" title="Search Messages">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
       </div>
     </div>
     <div class="panel-body" id="panel-chat-body">
@@ -137,151 +118,106 @@
     </div>
   </section>
 
-  <!-- AVATAR -->
-  <section class="panel" id="panel-avatar" data-panel="avatar">
-    <div class="panel-header">
-      <span class="panel-title">AVATAR</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+  <!-- ====== RIGHT COLUMN: SIDEBAR ====== -->
+  <div class="sidebar">
+
+    <!-- CAMERA FEED (compact vision) -->
+    <section class="panel sidebar-vision" id="panel-vision" data-panel="vision">
+      <div class="panel-header">
+        <span class="panel-title">CAMERA</span>
+        <span class="det-badge" id="vision-det-badge" style="display:none">0</span>
+      </div>
+      <div class="panel-body sidebar-vision-body" id="panel-vision-body">
+        <div class="vision-feed-wrap" id="vision-feed-wrap">
+          <img id="vision-feed" class="vision-feed" src="" alt="No feed" style="display:none" />
+          <div class="vision-feed-overlay" id="vision-feed-overlay">
+            <span class="vision-feed-placeholder">NO CAMERA</span>
+          </div>
+          <div class="vision-feed-detections" id="vision-feed-detections"></div>
+        </div>
+        <div id="vision-detection-list"><span class="text-muted">WAITING...</span></div>
+        <!-- Hidden elements kept for JS compatibility -->
+        <div id="vision-threats" style="display:none"></div>
+        <div id="vision-nodes" style="display:none"></div>
+        <span id="threat-level" style="display:none">0</span>
+        <span id="threat-label" style="display:none">SCANNING</span>
+        <div id="threat-meter-fill" style="display:none"></div>
+        <span id="jack-status" style="display:none"></span>
+        <span id="ambient-status" style="display:none"></span>
+      </div>
+    </section>
+
+    <!-- QUICK ACTIONS -->
+    <section class="panel quick-actions-panel">
+      <div class="panel-header"><span class="panel-title">QUICK ACTIONS</span></div>
+      <div class="panel-body quick-actions-body">
+        <div class="quick-actions-grid">
+          <button class="quick-action-btn" onclick="sendQuickAction('set a reminder for ')"><span class="qa-icon">&#9200;</span><span class="qa-label">Reminder</span></button>
+          <button class="quick-action-btn" onclick="sendQuickAction('what is the weather like?')"><span class="qa-icon">&#9925;</span><span class="qa-label">Weather</span></button>
+          <button class="quick-action-btn" onclick="sendQuickAction('who is on the network?')"><span class="qa-icon">&#128225;</span><span class="qa-label">Network</span></button>
+          <button class="quick-action-btn" onclick="sendQuickAction('security status')"><span class="qa-icon">&#128274;</span><span class="qa-label">Security</span></button>
+          <button class="quick-action-btn" onclick="sendQuickAction('how are you feeling?')"><span class="qa-icon">&#128172;</span><span class="qa-label">Mood</span></button>
+          <button class="quick-action-btn" onclick="sendQuickAction('system status')"><span class="qa-icon">&#9881;</span><span class="qa-label">System</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPACT STATUS BAR -->
+    <div class="panel status-summary-panel">
+      <div class="status-summary">
+        <div class="status-item" id="status-jack"><span class="status-dot dim"></span> JACK: --</div>
+        <div class="status-item" id="status-threat">THREAT: 0</div>
+        <div class="status-item" id="status-mood">MOOD: --</div>
+        <div class="status-item" id="status-vision">CAM: --</div>
       </div>
     </div>
+
+  </div><!-- /.sidebar -->
+
+  <!-- ====== HIDDEN PANELS (kept for JS module compat) ====== -->
+  <section class="panel" id="panel-avatar" data-panel="avatar" style="display:none">
     <div class="panel-body panel-body-avatar" id="panel-avatar-body">
       <canvas id="avatar-canvas"></canvas>
     </div>
   </section>
 
-  <!-- SYSTEM VITALS -->
-  <section class="panel" id="panel-vitals" data-panel="vitals">
-    <div class="panel-header">
-      <span class="panel-title">SYSTEM VITALS</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
-      </div>
-    </div>
+  <section class="panel" id="panel-vitals" data-panel="vitals" style="display:none">
     <div class="panel-body" id="panel-vitals-body">
       <div class="vitals-bars">
-        <div class="vital-row">
-          <span class="vital-name">GPU</span>
-          <div class="vital-track"><div class="vital-fill" id="vitals-gpu-fill"></div></div>
-          <span class="vital-val" id="vitals-gpu-val">--</span>
-        </div>
-        <div class="vital-row">
-          <span class="vital-name">RAM</span>
-          <div class="vital-track"><div class="vital-fill" id="vitals-ram-fill"></div></div>
-          <span class="vital-val" id="vitals-ram-val">--</span>
-        </div>
-        <div class="vital-row">
-          <span class="vital-name">DISK</span>
-          <div class="vital-track"><div class="vital-fill" id="vitals-disk-fill"></div></div>
-          <span class="vital-val" id="vitals-disk-val">--</span>
-        </div>
-        <div class="vital-row">
-          <span class="vital-name">TEMP</span>
-          <div class="vital-track"><div class="vital-fill" id="vitals-temp-fill"></div></div>
-          <span class="vital-val" id="vitals-temp-val">--</span>
-        </div>
+        <div class="vital-row"><span class="vital-name">GPU</span><div class="vital-track"><div class="vital-fill" id="vitals-gpu-fill"></div></div><span class="vital-val" id="vitals-gpu-val">--</span></div>
+        <div class="vital-row"><span class="vital-name">RAM</span><div class="vital-track"><div class="vital-fill" id="vitals-ram-fill"></div></div><span class="vital-val" id="vitals-ram-val">--</span></div>
+        <div class="vital-row"><span class="vital-name">DISK</span><div class="vital-track"><div class="vital-fill" id="vitals-disk-fill"></div></div><span class="vital-val" id="vitals-disk-val">--</span></div>
+        <div class="vital-row"><span class="vital-name">TEMP</span><div class="vital-track"><div class="vital-fill" id="vitals-temp-fill"></div></div><span class="vital-val" id="vitals-temp-val">--</span></div>
       </div>
       <div class="vitals-uptime" id="vitals-uptime">UPTIME --</div>
-      <div class="vitals-services">
-        <div class="section-label">SERVICES</div>
-        <div class="service-grid" id="service-grid"></div>
-      </div>
+      <div class="vitals-services"><div class="service-grid" id="service-grid"></div></div>
     </div>
   </section>
 
-  <!-- MOOD & WEATHER -->
-  <section class="panel" id="panel-mood" data-panel="mood">
-    <div class="panel-header">
-      <span class="panel-title">MOOD &amp; WEATHER</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
-      </div>
-    </div>
+  <section class="panel" id="panel-mood" data-panel="mood" style="display:none">
     <div class="panel-body" id="panel-mood-body">
       <div class="mood-section">
         <span class="mood-emoji" id="mood-emoji">&#9711;</span>
         <span class="mood-label" id="mood-label">NEUTRAL</span>
         <div class="mood-bar"><div class="mood-bar-fill" id="mood-fill" style="width:50%"></div></div>
-        <div class="mood-bar-labels"><span>NEG</span><span>POS</span></div>
       </div>
       <div class="weather-section">
         <span class="weather-icon" id="weather-icon">--</span>
         <span class="weather-temp" id="weather-temp">--</span>
         <div class="weather-detail" id="weather-detail"></div>
       </div>
-      <div class="emotion-trace">
-        <div class="section-label">EMOTION TRACE</div>
-        <canvas id="emotion-canvas" width="280" height="50"></canvas>
-      </div>
+      <canvas id="emotion-canvas" width="280" height="50"></canvas>
     </div>
   </section>
 
-  <!-- VISION -->
-  <section class="panel" id="panel-vision" data-panel="vision">
-    <div class="panel-header">
-      <span class="panel-title">VISION</span>
-      <span class="det-badge" id="vision-det-badge" style="display:none">0</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
-      </div>
-    </div>
-    <div class="panel-body" id="panel-vision-body">
-      <div class="threat-bar">
-        <span class="threat-level" id="threat-level">0</span>
-        <span class="threat-label" id="threat-label">SCANNING</span>
-        <div class="threat-meter"><div class="threat-meter-fill" id="threat-meter-fill"></div></div>
-      </div>
-      <div class="threat-meta">
-        <span id="jack-status"><span class="status-dot dim"></span>&nbsp;JACK --</span>
-        <span id="ambient-status"><span class="status-dot dim"></span>&nbsp;--</span>
-      </div>
-      <div id="vision-threats" style="display:none"></div>
-
-      <div class="section-label">LIVE FEED</div>
-      <div class="vision-feed-wrap" id="vision-feed-wrap">
-        <img id="vision-feed" class="vision-feed" src="" alt="No feed" style="display:none" />
-        <div class="vision-feed-overlay" id="vision-feed-overlay">
-          <span class="vision-feed-placeholder">NO CAMERA</span>
-        </div>
-        <div class="vision-feed-detections" id="vision-feed-detections"></div>
-      </div>
-
-      <div class="section-label">DETECTIONS</div>
-      <div id="vision-detection-list"><span class="text-muted">WAITING...</span></div>
-
-      <div class="section-label">VISION NODES</div>
-      <div id="vision-nodes"><span class="text-muted">SCANNING...</span></div>
-    </div>
-  </section>
-
-  <!-- NETWORK -->
-  <section class="panel" id="panel-network" data-panel="network">
-    <div class="panel-header">
-      <span class="panel-title">NETWORK</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
-      </div>
-    </div>
+  <section class="panel" id="panel-network" data-panel="network" style="display:none">
     <div class="panel-body" id="panel-network-body">
       <div class="network-summary" id="network-count">-- DEVICES</div>
       <div class="network-list" id="network-list"></div>
     </div>
   </section>
 
-  <!-- REMINDERS -->
-  <section class="panel" id="panel-reminders" data-panel="reminders">
-    <div class="panel-header">
-      <span class="panel-title">REMINDERS</span>
-      <div class="panel-controls">
-        <button class="panel-btn panel-collapse" title="Collapse">−</button>
-        <button class="panel-btn panel-maximize" title="Maximize">□</button>
-      </div>
-    </div>
+  <section class="panel" id="panel-reminders" data-panel="reminders" style="display:none">
     <div class="panel-body" id="panel-reminders-body">
       <div id="reminders-list"><span class="text-muted">NO ACTIVE REMINDERS</span></div>
     </div>
@@ -297,9 +233,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
 <!-- App scripts -->
-<script src="static/avatar-hologram.js?v=7"></script>
-<script src="static/neural-bg.js?v=7"></script>
-<script type="module" src="static/app.js?v=10"></script>
+<script src="static/avatar-hologram.js?v=11"></script>
+<script src="static/neural-bg.js?v=11"></script>
+<script type="module" src="static/app.js?v=11"></script>
 
 <!-- Service Worker -->
 <script>
