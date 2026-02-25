@@ -305,15 +305,30 @@ class JetsonVisionDetector:
 
         fps_time = time.time()
         fps_frames = 0
+        fail_count = 0
+        MAX_CONSECUTIVE_FAILS = 30  # ~3 seconds of failures triggers restart
 
         while self.running:
             try:
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Frame capture failed, retrying...")
-                    time.sleep(0.1)
+                    fail_count += 1
+                    if fail_count >= MAX_CONSECUTIVE_FAILS:
+                        logger.warning(f"Camera failed {fail_count} times, restarting pipeline...")
+                        cap.release()
+                        time.sleep(3)
+                        cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+                        if not cap.isOpened():
+                            logger.error("Camera restart failed, waiting 10s...")
+                            time.sleep(10)
+                            cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+                        fail_count = 0
+                        time.sleep(1)
+                    else:
+                        time.sleep(0.1)
                     continue
 
+                fail_count = 0
                 self.frame_count += 1
                 fps_frames += 1
 

@@ -1,373 +1,311 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORTANA // SENTIENT CORE</title>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0a0e17">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Cortana">
-    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="static/styles.css?v=20260219b">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
-    <!-- Syntax highlighting theme - cyber neon -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CORTANA // SENTIENT CORE</title>
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#0a0e17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CORTANA" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+
+  <!-- highlight.js atom-one-dark theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="static/styles.css?v=7" />
 </head>
 <body>
-    <!-- Scanline overlay -->
-    <div class="scanlines"></div>
 
-    <!-- Vignette effect -->
-    <div class="vignette"></div>
+<canvas id="neural-bg"></canvas>
 
-    <!-- Main container -->
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <div class="logo-section">
-                    <div class="logo-glitch" data-text="CORTANA">CORTANA</div>
-                    <div class="subtitle">SENTIENT NEURAL INTERFACE v1.0</div>
-                </div>
-
-                <div class="status-bar">
-                    <div class="status-item">
-                        <div class="status-label">NEURAL LINK</div>
-                        <div class="status-value" id="connection-status">
-                            <span class="status-dot status-connecting"></span>
-                            CONNECTING
-                        </div>
-                    </div>
-
-                    <div class="status-item">
-                        <div class="status-label">EMOTION STATE</div>
-                        <div class="status-value" id="emotion-status">
-                            <span class="emotion-indicator"></span>
-                            <span id="emotion-text">NEUTRAL</span>
-                        </div>
-                    </div>
-
-                    <div class="status-item">
-                        <div class="status-label">SYSTEM TIME</div>
-                        <div class="status-value" id="system-time">--:--:--</div>
-                    </div>
-
-                    <div class="status-item" style="display:flex;gap:6px;">
-                        <a href="/insights" class="btn-dashboard" title="Memory Insights" style="text-decoration:none;color:inherit;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
-                                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 3a2 2 0 1 1-2 2 2 2 0 0 1 2-2zm3 11H9v-1a3 3 0 0 1 3-3 3 3 0 0 1 3 3z"/>
-                            </svg>
-                        </a>
-                        <button class="btn-dashboard" id="dashboard-toggle" title="Neural Dashboard">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
-                                <circle cx="12" cy="12" r="3"/>
-                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="avatar-header">
-                <canvas id="avatar-canvas"></canvas>
-            </div>
-        </header>
-
-        <!-- Toast notification container -->
-        <div class="toast-container" id="toast-container"></div>
-
-        <!-- Neural Dashboard Panel -->
-        <aside class="neural-dashboard" id="neural-dashboard">
-            <div class="dashboard-header">
-                <h3 class="dashboard-title">NEURAL ACTIVITY</h3>
-                <button class="dashboard-close" id="dashboard-close">&times;</button>
-            </div>
-            <div class="dashboard-content">
-                <div class="dashboard-section">
-                    <div class="section-title">SERVICES</div>
-                    <div class="service-grid" id="service-grid">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-                <div class="dashboard-section">
-                    <div class="section-title">SYSTEM</div>
-                    <div class="system-stats" id="system-stats">
-                        <div class="stat-row"><span class="stat-label">GPU</span><span class="stat-value" id="stat-gpu">--</span></div>
-                        <div class="stat-row"><span class="stat-label">RAM</span><span class="stat-value" id="stat-ram">--</span></div>
-                        <div class="stat-row"><span class="stat-label">DISK</span><span class="stat-value" id="stat-disk">--</span></div>
-                        <div class="stat-row"><span class="stat-label">UPTIME</span><span class="stat-value" id="stat-uptime">--</span></div>
-                    </div>
-                </div>
-                <div class="dashboard-section">
-                    <div class="section-title">EMOTION TRACE</div>
-                    <canvas id="emotion-canvas" width="280" height="60"></canvas>
-                </div>
-                <div class="dashboard-section">
-                    <div class="section-title">ACTIVITY LOG</div>
-                    <div class="activity-log" id="activity-log">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <!-- ============================================
-             HOME DASHBOARD VIEW — COMMAND CENTER
-             ============================================ -->
-        <div id="home-view" class="home-view">
-            <div class="home-scroll">
-
-                <!-- HERO: Threat Level Arc -->
-                <section class="cc-hero" id="cc-hero">
-                    <div class="cc-hero__arc-wrap">
-                        <svg class="cc-hero__arc" viewBox="0 0 200 120" aria-hidden="true">
-                            <path class="cc-hero__arc-bg" d="M20,110 A80,80 0 0,1 180,110" fill="none" stroke-width="10" stroke-linecap="round"/>
-                            <path class="cc-hero__arc-fill" id="cc-arc-fill" d="M20,110 A80,80 0 0,1 180,110" fill="none" stroke-width="10" stroke-linecap="round"/>
-                        </svg>
-                        <div class="cc-hero__level" id="cc-threat-level">0</div>
-                    </div>
-                    <div class="cc-hero__status" id="cc-threat-label">SCANNING...</div>
-                    <div class="cc-hero__meta">
-                        <span class="cc-hero__tag" id="cc-jack-status">
-                            <span class="cc-dot cc-dot--dim"></span>JACK --
-                        </span>
-                        <span class="cc-hero__tag" id="cc-ambient-status">
-                            <span class="cc-dot cc-dot--dim"></span>--
-                        </span>
-                    </div>
-                </section>
-
-                <!-- ACTIVE THREATS (conditionally visible) -->
-                <section class="cc-threats" id="cc-threats" style="display:none;">
-                    <div class="cc-section-label">ACTIVE THREATS</div>
-                    <div class="cc-threats__list" id="cc-threats-list"></div>
-                </section>
-
-                <!-- SYSTEM VITALS -->
-                <section class="cc-vitals" id="cc-vitals">
-                    <div class="cc-section-label">SYSTEM VITALS</div>
-                    <div class="cc-vitals__grid" id="cc-vitals-grid">
-                        <div class="cc-vital" id="cc-vital-gpu">
-                            <div class="cc-vital__head"><span class="cc-vital__name">GPU</span><span class="cc-vital__val" id="cc-gpu-val">--</span></div>
-                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-gpu-fill"></div></div>
-                        </div>
-                        <div class="cc-vital" id="cc-vital-ram">
-                            <div class="cc-vital__head"><span class="cc-vital__name">RAM</span><span class="cc-vital__val" id="cc-ram-val">--</span></div>
-                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-ram-fill"></div></div>
-                        </div>
-                        <div class="cc-vital" id="cc-vital-disk">
-                            <div class="cc-vital__head"><span class="cc-vital__name">DISK</span><span class="cc-vital__val" id="cc-disk-val">--</span></div>
-                            <div class="cc-vital__track"><div class="cc-vital__fill" id="cc-disk-fill"></div></div>
-                        </div>
-                    </div>
-                    <div class="cc-uptime" id="cc-uptime">UPTIME --</div>
-                </section>
-
-                <!-- WEATHER + MOOD side-by-side -->
-                <section class="cc-duo">
-                    <div class="cc-duo__panel cc-panel-weather" id="cc-weather">
-                        <div class="cc-section-label">WEATHER</div>
-                        <div class="cc-weather__body" id="cc-weather-body">
-                            <span class="cc-weather__icon" id="cc-weather-icon">--</span>
-                            <span class="cc-weather__temp" id="cc-weather-temp">--</span>
-                        </div>
-                        <div class="cc-weather__detail" id="cc-weather-detail"></div>
-                    </div>
-                    <div class="cc-duo__panel cc-panel-mood" id="cc-mood">
-                        <div class="cc-section-label">CORTANA MOOD</div>
-                        <div class="cc-mood__body">
-                            <span class="cc-mood__emoji" id="cc-mood-emoji">&#9711;</span>
-                            <span class="cc-mood__label" id="cc-mood-label">NEUTRAL</span>
-                        </div>
-                        <div class="cc-mood__bar-wrap">
-                            <div class="cc-mood__bar-fill" id="cc-mood-fill" style="width:50%"></div>
-                        </div>
-                        <div class="cc-mood__bar-labels"><span>NEG</span><span>POS</span></div>
-                    </div>
-                </section>
-
-                <!-- VISION NODES -->
-                <section class="cc-nodes" id="cc-nodes">
-                    <div class="cc-section-label">VISION NODES</div>
-                    <div class="cc-nodes__list" id="cc-nodes-list">
-                        <span class="cc-muted">SCANNING...</span>
-                    </div>
-                </section>
-
-                <!-- NETWORK -->
-                <section class="cc-network" id="cc-network">
-                    <button class="cc-network__summary" id="cc-network-toggle" aria-expanded="false">
-                        <div class="cc-section-label" style="margin:0">NETWORK</div>
-                        <span class="cc-network__count" id="cc-network-count">-- DEVICES</span>
-                        <svg class="cc-network__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                    <div class="cc-network__detail" id="cc-network-detail" style="display:none;"></div>
-                </section>
-
-                <!-- REMINDERS -->
-                <section class="cc-reminders" id="cc-reminders">
-                    <div class="cc-section-label">REMINDERS</div>
-                    <div class="cc-reminders__list" id="cc-reminders-list">
-                        <span class="cc-muted">NO ACTIVE REMINDERS</span>
-                    </div>
-                </section>
-
-                <!-- QUICK ACTIONS -->
-                <section class="cc-actions">
-                    <button class="cc-action-btn" id="qa-talk">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        <span>TALK TO CORTANA</span>
-                    </button>
-                    <button class="cc-action-btn" id="qa-reminder">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                        <span>SET REMINDER</span>
-                    </button>
-                    <button class="cc-action-btn" id="qa-diagnostic">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        <span>SYSTEM CHECK</span>
-                    </button>
-                    <button class="cc-action-btn" id="qa-netscan">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
-                        <span>NETWORK SCAN</span>
-                    </button>
-                </section>
-
-            </div>
-        </div>
-
-        <!-- ============================================
-             CHAT VIEW (wraps existing chat + input)
-             ============================================ -->
-        <div id="chat-view" class="chat-view" style="display:none;">
-            <!-- Chat area -->
-            <main class="chat-container">
-                <!-- Messages -->
-                <div class="messages" id="messages">
-                    <!-- Messages will be inserted here -->
-                </div>
-
-                <!-- Thinking indicator -->
-                <div class="thinking-indicator" id="thinking-indicator" style="display: none;">
-                    <div class="thinking-dots">
-                        <div class="thinking-icon">
-                            <div class="brain-pulse"></div>
-                        </div>
-                        <div class="thinking-text">
-                            <span class="thinking-label">CORTANA IS PROCESSING</span>
-                            <div class="thinking-stage" id="thinking-stage"></div>
-                        </div>
-                    </div>
-                    <div class="thinking-progress">
-                        <div class="thinking-progress-bar"></div>
-                    </div>
-                </div>
-            </main>
-
-            <!-- Input area -->
-            <footer class="input-area">
-                <div class="input-container">
-                    <div class="input-wrapper">
-                        <textarea
-                            id="message-input"
-                            placeholder="TRANSMIT MESSAGE TO CORTANA..."
-                            rows="1"
-                            maxlength="2000"
-                        ></textarea>
-                        <div class="char-counter">
-                            <span id="char-count">0</span>/2000
-                        </div>
-                    </div>
-
-                    <div class="input-controls">
-                        <button class="btn btn-voice btn-labeled" id="voice-btn" title="Voice Input">
-                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                <line x1="12" y1="19" x2="12" y2="23"/>
-                                <line x1="8" y1="23" x2="16" y2="23"/>
-                            </svg>
-                            <span class="btn-label">VOICE</span>
-                        </button>
-
-                        <button class="btn btn-tts btn-labeled" id="tts-btn" title="Toggle Voice Output">
-                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                            </svg>
-                            <span class="btn-label">TTS</span>
-                        </button>
-
-                        <button class="btn btn-handsfree btn-labeled" id="handsfree-btn" title="Hands-Free Mode">
-                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                            </svg>
-                            <span class="btn-label">HANDS-FREE</span>
-                        </button>
-
-                        <button class="btn btn-send" id="send-btn" title="Send Message">
-                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="22" y1="2" x2="11" y2="13"/>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                            </svg>
-                            <span class="btn-text">TRANSMIT</span>
-                        </button>
-                    </div>
-                </div>
-            </footer>
-        </div>
-
-        <!-- ============================================
-             BOTTOM TAB BAR
-             ============================================ -->
-        <nav class="tab-bar" id="tab-bar">
-            <button class="tab-bar__tab tab-bar__tab--active" id="tab-home" data-tab="home" aria-label="Home Dashboard">
-                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                    <polyline points="9 22 9 12 15 12 15 22"/>
-                </svg>
-                <span class="tab-bar__label">HOME</span>
-            </button>
-            <button class="tab-bar__tab" id="tab-chat" data-tab="chat" aria-label="Chat with Cortana">
-                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                <span class="tab-bar__label">CHAT</span>
-            </button>
-            <button class="tab-bar__tab" id="tab-vision" onclick="window.location.href='/vision'" aria-label="Vision Feeds">
-                <svg class="tab-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
-                </svg>
-                <span class="tab-bar__label">VISION</span>
-            </button>
-        </nav>
+<header class="header">
+  <div class="header-left">
+    <span class="logo">CORTANA</span>
+    <span class="logo-sub">v3.0</span>
+  </div>
+  <div class="header-center">
+    <span class="status-dot connecting" id="connection-dot"></span>
+    <span id="connection-text">CONNECTING</span>
+    <span class="header-sep">|</span>
+    <span id="emotion-text">NEUTRAL</span>
+  </div>
+  <div class="header-right">
+    <span id="system-time">--:--</span>
+    <span class="header-sep">|</span>
+    <div class="preset-switcher-wrap">
+      <button class="btn-icon header-btn" id="preset-switcher-btn" title="Switch Layout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+      <div class="preset-dropdown" id="preset-dropdown">
+        <button class="preset-option active" data-preset="default">Default (3-col)</button>
+        <button class="preset-option" data-preset="focus-chat">Focus Chat</button>
+        <button class="preset-option" data-preset="monitor">Monitor</button>
+      </div>
     </div>
+    <button class="btn-icon header-btn" id="reset-layout-btn" title="Reset Layout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    <button class="btn-icon header-btn" id="settings-btn" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
 
-    <!-- Audio element for voice recording -->
-    <audio id="audio-player" style="display: none;"></audio>
+<div class="toast-container" id="toast-container"></div>
 
-    <!-- Markdown rendering + syntax highlighting + sanitization -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+<main id="grid-container" class="grid-container">
 
-    <!-- Scripts -->
-    <script src="static/avatar-hologram.js?v=20260219b"></script>
-    <script src="static/neural-bg.js?v=20260219b"></script>
-    <script src="static/app.js?v=20260219b"></script>
+  <!-- CHAT -->
+  <section class="panel" id="panel-chat" data-panel="chat">
+    <div class="panel-header">
+      <span class="panel-title">CHAT</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-search-btn" title="Search Messages">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-chat-body">
 
-    <!-- Service Worker Registration -->
-    <script>
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').then(reg => {
-            console.log('[SW] Registered:', reg.scope);
-        }).catch(err => console.warn('[SW] Registration failed:', err));
-    }
-    </script>
+      <!-- Messages -->
+      <div class="messages" id="messages"></div>
+
+      <!-- Thinking indicator -->
+      <div class="thinking-indicator" id="thinking-indicator" style="display:none">
+        <div class="thinking-dots">
+          <div class="thinking-pulse"></div>
+          <span class="thinking-label">PROCESSING</span>
+          <span class="thinking-stage" id="thinking-stage"></span>
+        </div>
+        <div class="thinking-progress">
+          <div class="thinking-progress-bar"></div>
+        </div>
+      </div>
+
+      <!-- Input area -->
+      <div class="chat-input-area">
+        <div class="input-wrapper">
+          <textarea id="message-input" placeholder="Message Cortana..." rows="1" maxlength="2000"></textarea>
+          <span class="char-counter"><span id="char-count">0</span>/2000</span>
+        </div>
+        <div class="input-controls">
+          <button class="btn-icon" id="voice-btn" title="Voice Input">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+            </svg>
+          </button>
+          <button class="btn-icon" id="tts-btn" title="TTS">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+          </button>
+          <button class="btn-icon" id="handsfree-btn" title="Hands-Free">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </button>
+          <button class="btn-icon" id="cmd-palette-btn" title="Commands">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <polyline points="4 17 10 11 4 5"/>
+              <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+          </button>
+          <button class="btn-send" id="send-btn" title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- AVATAR -->
+  <section class="panel" id="panel-avatar" data-panel="avatar">
+    <div class="panel-header">
+      <span class="panel-title">AVATAR</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body panel-body-avatar" id="panel-avatar-body">
+      <canvas id="avatar-canvas"></canvas>
+    </div>
+  </section>
+
+  <!-- SYSTEM VITALS -->
+  <section class="panel" id="panel-vitals" data-panel="vitals">
+    <div class="panel-header">
+      <span class="panel-title">SYSTEM VITALS</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-vitals-body">
+      <div class="vitals-bars">
+        <div class="vital-row">
+          <span class="vital-name">GPU</span>
+          <div class="vital-track"><div class="vital-fill" id="vitals-gpu-fill"></div></div>
+          <span class="vital-val" id="vitals-gpu-val">--</span>
+        </div>
+        <div class="vital-row">
+          <span class="vital-name">RAM</span>
+          <div class="vital-track"><div class="vital-fill" id="vitals-ram-fill"></div></div>
+          <span class="vital-val" id="vitals-ram-val">--</span>
+        </div>
+        <div class="vital-row">
+          <span class="vital-name">DISK</span>
+          <div class="vital-track"><div class="vital-fill" id="vitals-disk-fill"></div></div>
+          <span class="vital-val" id="vitals-disk-val">--</span>
+        </div>
+        <div class="vital-row">
+          <span class="vital-name">TEMP</span>
+          <div class="vital-track"><div class="vital-fill" id="vitals-temp-fill"></div></div>
+          <span class="vital-val" id="vitals-temp-val">--</span>
+        </div>
+      </div>
+      <div class="vitals-uptime" id="vitals-uptime">UPTIME --</div>
+      <div class="vitals-services">
+        <div class="section-label">SERVICES</div>
+        <div class="service-grid" id="service-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MOOD & WEATHER -->
+  <section class="panel" id="panel-mood" data-panel="mood">
+    <div class="panel-header">
+      <span class="panel-title">MOOD &amp; WEATHER</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-mood-body">
+      <div class="mood-section">
+        <span class="mood-emoji" id="mood-emoji">&#9711;</span>
+        <span class="mood-label" id="mood-label">NEUTRAL</span>
+        <div class="mood-bar"><div class="mood-bar-fill" id="mood-fill" style="width:50%"></div></div>
+        <div class="mood-bar-labels"><span>NEG</span><span>POS</span></div>
+      </div>
+      <div class="weather-section">
+        <span class="weather-icon" id="weather-icon">--</span>
+        <span class="weather-temp" id="weather-temp">--</span>
+        <div class="weather-detail" id="weather-detail"></div>
+      </div>
+      <div class="emotion-trace">
+        <div class="section-label">EMOTION TRACE</div>
+        <canvas id="emotion-canvas" width="280" height="50"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- VISION -->
+  <section class="panel" id="panel-vision" data-panel="vision">
+    <div class="panel-header">
+      <span class="panel-title">VISION</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-vision-body">
+      <div class="threat-bar">
+        <span class="threat-level" id="threat-level">0</span>
+        <span class="threat-label" id="threat-label">SCANNING</span>
+        <div class="threat-meter"><div class="threat-meter-fill" id="threat-meter-fill"></div></div>
+      </div>
+      <div class="threat-meta">
+        <span id="jack-status"><span class="status-dot dim"></span>&nbsp;JACK --</span>
+        <span id="ambient-status"><span class="status-dot dim"></span>&nbsp;--</span>
+      </div>
+      <div id="vision-threats" style="display:none"></div>
+
+      <div class="section-label">LIVE FEED</div>
+      <div class="vision-feed-wrap" id="vision-feed-wrap">
+        <img id="vision-feed" class="vision-feed" src="" alt="No feed" style="display:none" />
+        <div class="vision-feed-overlay" id="vision-feed-overlay">
+          <span class="vision-feed-placeholder">NO CAMERA</span>
+        </div>
+        <div class="vision-feed-detections" id="vision-feed-detections"></div>
+      </div>
+
+      <div class="section-label">DETECTIONS</div>
+      <div id="vision-detection-list"><span class="text-muted">WAITING...</span></div>
+
+      <div class="section-label">VISION NODES</div>
+      <div id="vision-nodes"><span class="text-muted">SCANNING...</span></div>
+    </div>
+  </section>
+
+  <!-- NETWORK -->
+  <section class="panel" id="panel-network" data-panel="network">
+    <div class="panel-header">
+      <span class="panel-title">NETWORK</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-network-body">
+      <div class="network-summary" id="network-count">-- DEVICES</div>
+      <div class="network-list" id="network-list"></div>
+    </div>
+  </section>
+
+  <!-- REMINDERS -->
+  <section class="panel" id="panel-reminders" data-panel="reminders">
+    <div class="panel-header">
+      <span class="panel-title">REMINDERS</span>
+      <div class="panel-controls">
+        <button class="panel-btn panel-collapse" title="Collapse">−</button>
+        <button class="panel-btn panel-maximize" title="Maximize">□</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-reminders-body">
+      <div id="reminders-list"><span class="text-muted">NO ACTIVE REMINDERS</span></div>
+    </div>
+  </section>
+
+</main>
+
+<audio id="audio-player" style="display:none"></audio>
+
+<!-- External libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+
+<!-- App scripts -->
+<script src="static/avatar-hologram.js?v=7"></script>
+<script src="static/neural-bg.js?v=7"></script>
+<script type="module" src="static/app.js?v=7"></script>
+
+<!-- Service Worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(e => console.warn('[SW]', e));
+}
+</script>
+
 </body>
 </html>

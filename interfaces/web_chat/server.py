@@ -653,7 +653,11 @@ class MQTTBridge:
             ts = datetime.now().isoformat()
 
             # Update node tracking
-            if source == "pi1" and "pi1" in _vision_nodes:
+            if source == "jetson" and "jetson" in _vision_nodes:
+                _vision_nodes["jetson"]["detections"] = objects
+                _vision_nodes["jetson"]["last_seen"] = ts
+                _vision_nodes["jetson"]["online"] = True
+            elif source == "pi1" and "pi1" in _vision_nodes:
                 _vision_nodes["pi1"]["detections"] = objects
                 _vision_nodes["pi1"]["last_seen"] = ts
                 _vision_nodes["pi1"]["online"] = True
@@ -1084,6 +1088,7 @@ async def vision_page():
 
 # Vision node registry: node_id -> {ip, port, online, last_seen, detections}
 _vision_nodes = {
+    "jetson": {"ip": "127.0.0.1", "port": 8091, "online": False, "last_seen": None, "detections": [], "fps": 0},
     "pi1": {"ip": "192.168.1.219", "port": 8090, "online": False, "last_seen": None, "detections": [], "fps": 0},
     "rdkx5": {"ip": "192.168.1.208", "port": 8090, "online": False, "last_seen": None, "detections": {}, "fps": 0},
 }
@@ -1144,7 +1149,9 @@ import httpx
 async def vision_stream(node_id: str):
     """Proxy MJPEG stream from a vision node"""
     # Map node_id to actual address
-    if node_id == "pi1":
+    if node_id == "jetson":
+        target = "http://127.0.0.1:8091/stream"
+    elif node_id == "pi1":
         target = "http://192.168.1.219:8090/stream"
     elif node_id.startswith("rdkx5"):
         cam = node_id.replace("rdkx5_", "") if "_" in node_id else "front_door"
