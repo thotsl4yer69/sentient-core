@@ -2,15 +2,15 @@ import { escapeHtml } from '../utils.js';
 
 let visionWs = null;
 let reconnectTimer = null;
-let snapshotTimer = null;
-let feedActive = false;
+let streamActive = false;
+let feedFirstLoad = true;
 let activeNode = 'jetson';
 let detectionCount = 0;
 let nodeFps = {};
 
 export function init() {
   connectVisionWs();
-  startSnapshotPolling();
+  startMjpegStream();
 
   // Node switcher clicks
   document.getElementById('vision-nodes')?.addEventListener('click', (e) => {
@@ -45,50 +45,55 @@ function connectVisionWs() {
   }
 }
 
-// ── Snapshot Polling (more reliable than MJPEG proxy) ──
-function startSnapshotPolling() {
+// ── MJPEG Stream ──
+function startMjpegStream() {
   const img = document.getElementById('vision-feed');
   const overlay = document.getElementById('vision-feed-overlay');
   if (!img) return;
 
-  let firstLoad = true;
-
-  // Show connecting state immediately
+  // Show connecting state
   if (overlay) {
     overlay.style.display = 'flex';
     overlay.innerHTML = '<span class="vision-feed-placeholder">CONNECTING...</span>';
   }
+  img.style.display = 'none';
+  feedFirstLoad = true;
 
-  function loadSnapshot() {
-    const ts = Date.now();
-    const testImg = new Image();
-    testImg.onload = () => {
-      img.src = testImg.src;
+  // Set MJPEG stream URL — browser handles continuous loading
+  const streamUrl = `/api/vision/stream/${activeNode}`;
+
+  img.onload = () => {
+    if (feedFirstLoad) {
+      // First frame received — stream is live
       img.style.display = 'block';
       if (overlay) overlay.style.display = 'none';
-      feedActive = true;
-      firstLoad = false;
-    };
-    testImg.onerror = () => {
-      if (overlay) {
-        overlay.style.display = 'flex';
-        overlay.innerHTML = firstLoad
-          ? '<span class="vision-feed-placeholder">CONNECTING...</span>'
-          : '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
-      }
-      feedActive = false;
-      firstLoad = false;
-    };
-    testImg.src = `/api/vision/snapshot/${activeNode}?t=${ts}`;
-  }
+      feedFirstLoad = false;
+      streamActive = true;
+    }
+  };
 
-  loadSnapshot();
-  snapshotTimer = setInterval(loadSnapshot, 500);
+  img.onerror = () => {
+    streamActive = false;
+    if (overlay) {
+      overlay.style.display = 'flex';
+      overlay.innerHTML = '<span class="vision-feed-placeholder">FEED OFFLINE</span>';
+    }
+    img.style.display = 'none';
+    // Retry after 3 seconds
+    setTimeout(() => {
+      if (!streamActive) {
+        feedFirstLoad = true;
+        if (overlay) overlay.innerHTML = '<span class="vision-feed-placeholder">RECONNECTING...</span>';
+        img.src = `/api/vision/stream/${activeNode}?t=${Date.now()}`;
+      }
+    }, 3000);
+  };
+
+  img.src = streamUrl;
 }
 
 function switchFeed(node) {
   activeNode = node;
-  clearInterval(snapshotTimer);
 
   // Clear detection list immediately on switch
   const listEl = document.getElementById('vision-detection-list');
@@ -97,7 +102,7 @@ function switchFeed(node) {
   const badge = document.getElementById('vision-det-badge');
   if (badge) badge.style.display = 'none';
 
-  startSnapshotPolling();
+  startMjpegStream();
 
   // Update active highlight
   document.querySelectorAll('#vision-nodes .node-row').forEach(r => {
@@ -237,5 +242,7 @@ export function update(data) {
 export function destroy() {
   if (visionWs) { visionWs.close(); visionWs = null; }
   clearTimeout(reconnectTimer);
-  clearInterval(snapshotTimer);
+  const img = document.getElementById('vision-feed');
+  if (img) img.src = '';
+  streamActive = false;
 }
