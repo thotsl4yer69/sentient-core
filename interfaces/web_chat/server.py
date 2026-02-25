@@ -57,7 +57,7 @@ async def get_system_status() -> dict:
             'sentient-perception', 'sentient-web-chat', 'sentient-avatar',
             'sentient-proactive', 'sentient-piper-tts', 'sentient-whisper-stt',
             'sentient-wake-word', 'sentient-notifications',
-            'ollama'
+            'sentient-vision-jetson', 'ollama'
         ]
 
         for svc in service_names:
