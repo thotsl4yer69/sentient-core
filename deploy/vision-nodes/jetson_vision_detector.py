@@ -307,7 +307,7 @@ class JetsonVisionDetector:
         fps_frames = 0
         fail_count = 0
         MAX_CONSECUTIVE_FAILS = 30  # ~3 seconds of failures triggers restart
-        PIPELINE_RESTART_FRAMES = 10000  # Restart camera every 10K frames to prevent Argus DMA leak
+        PIPELINE_RESTART_FRAMES = 2000  # Restart camera every 2K frames (~10min) to prevent Argus DMA leak
         pipeline_frame_count = 0
 
         while self.running:
