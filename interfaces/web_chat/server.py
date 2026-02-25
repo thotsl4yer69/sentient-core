@@ -216,15 +216,34 @@ async def get_system_status() -> dict:
         )
         if result.returncode == 0 and result.stdout.strip():
             perception = json.loads(result.stdout.strip())
+            nodes = perception.get('system_health', {})
+            # Merge vision nodes into the nodes dict for dashboard
+            for nid, ninfo in _vision_nodes.items():
+                nodes[nid] = {
+                    'online': ninfo.get('online', False),
+                    'detections': ninfo.get('detections', []),
+                    'last_seen': ninfo.get('last_seen'),
+                }
             security = {
                 'threat_level': perception.get('threat_level', 0),
                 'active_threats': perception.get('active_threats', []),
                 'jack_present': perception.get('jack_present', False),
                 'ambient_state': perception.get('ambient_state', 'unknown'),
-                'nodes': perception.get('system_health', {}),
+                'nodes': nodes,
             }
     except Exception:
         pass
+
+    # Always include vision nodes even if perception is unreachable
+    if 'nodes' not in security:
+        security['nodes'] = {}
+    if not any(nid in security['nodes'] for nid in _vision_nodes):
+        for nid, ninfo in _vision_nodes.items():
+            security['nodes'][nid] = {
+                'online': ninfo.get('online', False),
+                'detections': ninfo.get('detections', []),
+                'last_seen': ninfo.get('last_seen'),
+            }
 
     return {
         'services': services, 'stats': stats, 'mood': mood,
