@@ -253,12 +253,19 @@ class PerceptionLayer:
                 "data": payload
             }
 
+            # Parse objects array into flat classes list + max confidence
+            objects = payload.get("objects", [])
+            classes = [obj["class"] for obj in objects if "class" in obj]
+            max_conf = max((obj.get("confidence", 0) for obj in objects), default=0)
+
             # Check for Jack's presence
-            if "person" in payload.get("classes", []):
-                if payload.get("confidence", 0) > 0.7:
+            if "person" in classes:
+                if max_conf > 0.3:
                     self.time_awareness.update_interaction()
 
-            # Check for threats
+            # Check for threats — inject parsed classes for _analyze_vision_threats
+            payload["classes"] = classes
+            payload["confidence"] = max_conf
             self._analyze_vision_threats(camera_id, payload)
 
         except Exception as e:

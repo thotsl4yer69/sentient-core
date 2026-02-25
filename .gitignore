@@ -48,3 +48,8 @@ config/secrets.*
 
 # Generated icons script (keep the PNGs)
 static/icons/generate_icons.py
+
+# ML models (too large for git)
+models/*.onnx
+models/*.engine
+models/*.trt
