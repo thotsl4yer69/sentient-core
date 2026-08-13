@@ -43,7 +43,7 @@ from aiomqtt import Client as MQTTClient
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER", "sentient")
-MQTT_PASS = os.getenv("MQTT_PASS", os.environ["MQTT_PASS"])
+MQTT_PASS = os.environ["MQTT_PASS"]
 
 # Audio Configuration
 SAMPLE_RATE = 16000  # Standard for both Whisper and VAD
