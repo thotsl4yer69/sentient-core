@@ -1,284 +1,141 @@
-# SENTIENT CORE v7.0 - QUICKSTART GUIDE
+# Sentient Core — Quickstart
 
-**System:** Jetson Orin Nano (nanob, 192.168.1.159)
-**Status:** ✅ PRODUCTION-READY
-**Version:** 7.0 (Fast Mode)
+> **Current maturity: Deployed prototype / active hardening.**  
+> This guide is for running and inspecting an existing Sentient Core development node. It does not imply that every historical service is active on every revision. Read [PROJECT_STATUS.md](PROJECT_STATUS.md) and [SECURITY.md](SECURITY.md) first.
 
----
+## 1. Confirm the target node
 
-## 🚀 FASTEST START (30 Seconds)
+Sentient Core is designed for a Linux/Jetson environment. Do not copy historical private IP addresses from old commits. Use the address/hostname assigned to the node you are actually testing.
 
-### 1. Launch Testing Interface
 ```bash
-cd /opt/sentient-core
-./launch-testing.sh
+hostname
+hostname -I
+uname -a
 ```
 
-### 2. Access Web Chat
-Open in browser: **http://192.168.1.159:3001**
+If this is a fresh machine, follow the deployment/rebuild documentation instead of assuming an old `/opt/sentient-core` installation exists.
 
-### 3. Start Talking
-Type: "Hey Cortana, how are you?"
+## 2. Check required runtime configuration
 
-**That's it!** System is ready to use.
+The current public source does **not** provide a working MQTT password default. Services that use authenticated MQTT require private runtime configuration such as:
 
----
-
-## 📋 WHAT YOU NEED TO KNOW
-
-### Response Times (Fast Mode)
-- **First message:** 30-60 seconds (model loading)
-- **Subsequent messages:** 20-40 seconds (cached)
-- **Expected:** Some variability due to Jetson hardware
-
-### What Works
-- ✅ Web chat interface (port 3001)
-- ✅ Conversation manager (orchestrates all services)
-- ✅ Memory system (remembers conversations)
-- ✅ Perception layer (world state awareness)
-- ✅ Personality (Cortana's identity integrated)
-- ✅ All 12 services active
-
-### What Needs Testing
-- ⏸️ Wake word ("Hey Cortana") - requires microphone
-- ⏸️ Voice mode - requires audio I/O
-- ⏸️ Terminal CLI - requires interactive session
-
----
-
-## 🔧 COMMON TASKS
-
-### Check System Status
-```bash
-# All services
-systemctl status sentient-*.service | grep -E "(●|Active:)"
-
-# Health checks
-curl http://localhost:8001/health  # Memory
-curl http://localhost:8002/health  # Contemplation
-curl http://localhost:8003/health  # Perception
+```text
+MQTT_BROKER
+MQTT_PORT
+MQTT_USER
+MQTT_PASS
 ```
 
-### View Logs
+Do not paste replacement credentials into Git, README files or shared shell history. See [SECURITY.md](SECURITY.md).
+
+## 3. Inspect service state
+
+On an existing systemd-managed development node:
+
 ```bash
-# Conversation service (main orchestrator)
-sudo journalctl -u sentient-conversation.service -f
-
-# Contemplation (LLM responses)
-sudo journalctl -u sentient-contemplation-http.service -f
-
-# All services
-sudo journalctl -u sentient-*.service -f
+systemctl list-units 'sentient-*.service' --no-pager
 ```
 
-### Restart Services
+Inspect a specific service before restarting it:
+
 ```bash
-# All services
-sudo systemctl restart sentient-*.service
-
-# Specific service
-sudo systemctl restart sentient-conversation.service
-
-# Ollama (if CUDA errors occur)
-sudo systemctl restart ollama
+systemctl status sentient-conversation.service --no-pager
+journalctl -u sentient-conversation.service -n 100 --no-pager
 ```
 
-### Test MQTT Messaging
-```bash
-# Subscribe to all topics
-mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t "sentient/#" -v
+Service names have evolved across revisions. Treat the repository/service files on the tested commit as the source of truth rather than assuming an old service count.
 
-# Send test message
-mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
-  -t "sentient/persona/chat/input" \
-  -m '{"text": "Hello Cortana", "user": "Jack", "timestamp": "2026-01-29T12:00:00+11:00"}'
+## 4. Check local dependencies
+
+Depending on the selected build, Sentient Core can use infrastructure such as MQTT, Redis and Ollama/local inference.
+
+Typical local checks:
+
+```bash
+systemctl status mosquitto --no-pager || true
+systemctl status redis-server --no-pager || true
+systemctl status ollama --no-pager || true
 ```
 
----
+Then use the project health/test tooling for the exact revision under test.
 
-## 🎯 INTERFACES
+## 5. Launch the available interface
 
-### 1. Web Chat (Recommended)
-- **URL:** http://192.168.1.159:3001
-- **Features:** Real-time WebSocket, emotion indicator, brutalist theme
-- **Usage:** Type message, click send, wait 20-60s for response
+The repository has experimented with web, terminal and voice interfaces. Use the interface documented by the tested revision.
 
-### 2. Terminal CLI
+For a web interface, first confirm the service/port locally rather than opening an old hard-coded LAN URL:
+
 ```bash
-cd /opt/sentient-core/interfaces
-python3 cli.py
-```
-- **Features:** Colored output, emotion emojis, thinking spinner
-- **Exit:** Ctrl+C
-
-### 3. MQTT Direct
-```bash
-# Listen for responses
-mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
-  -t "sentient/persona/chat/output" -v
-
-# Send message (in another terminal)
-mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
-  -t "sentient/persona/chat/input" \
-  -m '{"text": "Your message", "user": "Jack", "timestamp": "2026-01-29T12:00:00+11:00"}'
+ss -lntp | grep -E ':(3001|8001|8002|8003|9001)\b' || true
 ```
 
-### 4. HTTP API (Advanced)
-```bash
-# Generate response
-curl -X POST http://localhost:8002/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": "Hello Cortana",
-    "user_id": "Jack",
-    "memories": [],
-    "world_state": {"jack_present": true},
-    "conversation_context": {}
-  }' | jq
+For a CLI build, inspect `interfaces/` and run the current entry point from the project environment.
+
+Voice/wake-word operation depends on real audio hardware and the active service configuration; software presence alone is not proof that the full microphone-to-TTS path is functioning.
+
+## 6. Verify the core path
+
+A meaningful smoke test should confirm the chain that matters for the selected build:
+
+```text
+user input
+   ↓
+conversation/orchestration
+   ↓
+memory + state/context
+   ↓
+local model generation
+   ↓
+response output
 ```
 
----
+Record the exact commit, model, hardware and service state with any performance measurement. Historical latency, memory-count and service-count values elsewhere in the repository are snapshots rather than guarantees.
 
-## ⚠️ TROUBLESHOOTING
+## 7. Logs and recovery
 
-### "Sorry, I need a moment to think about that."
-**Cause:** Contemplation timeout (response took >90s)
-**Fix:** This is normal for first request or under heavy load. Try again.
+Use targeted logs before broad restarts:
 
-### CUDA Memory Errors
-**Symptom:** Ollama crashes, no responses
-**Fix:**
 ```bash
-sudo systemctl restart ollama
-sleep 5
-# Then try your request again
+journalctl -u sentient-conversation.service -n 100 --no-pager
+journalctl -u ollama -n 100 --no-pager
 ```
 
-### Service Not Running
-```bash
-# Check which service
-systemctl is-active sentient-*.service | \
-  paste <(systemctl list-units "sentient-*.service" --no-legend | awk '{print $1}') -
+If a component is unhealthy, identify whether the failure is configuration, dependency, resource pressure or application code before restarting the entire stack.
 
-# Start inactive service
-sudo systemctl start sentient-<service-name>.service
-```
+A full restart can be useful during development, but it should not substitute for understanding recovery behaviour when assessing release readiness.
 
-### Web Chat Not Loading
-1. Check service: `systemctl is-active sentient-web-chat.service`
-2. Check port: `sudo lsof -i :3001`
-3. Check logs: `sudo journalctl -u sentient-web-chat.service -n 20`
-4. Restart: `sudo systemctl restart sentient-web-chat.service`
+## 8. MQTT testing
 
-### Slow Responses (>60s)
-**Normal on Jetson Orin Nano.** Hardware limitations:
-- Jetson has limited GPU memory (3.6GB available)
-- qwen3:4b model requires 2.2GB
-- Response variability expected (20-72 seconds)
+Do not use the historical password that existed in public Git history. It is compromised and must be rotated at the broker.
 
-**Options:**
-- Accept current performance (fast for edge AI)
-- Upgrade hardware (RTX 3060+, Jetson AGX Orin)
-- Use smaller model (llama3.2:1b for 10-20s responses)
+For authenticated client testing, supply the **new** credential through private runtime configuration or a client configuration/credential mechanism appropriate to the installed Mosquitto tools. Avoid publishing passwords directly in documentation or committed scripts.
 
----
+Also verify broker ACLs: a successful login should not automatically imply read/write permission to every `sentient/#` topic.
 
-## 📊 PERFORMANCE EXPECTATIONS
+## 9. Performance expectations
 
-### Normal Behavior
-| Scenario | Expected Time | Notes |
-|----------|---------------|-------|
-| First request after boot | 30-60s | Model loading + generation |
-| Cached requests | 20-40s | Model already loaded |
-| Under CUDA errors | 60-90s or timeout | Restart Ollama |
+Jetson performance depends on the exact model, quantisation/runtime, thermal/power mode, concurrent services and prompt length. Treat old figures such as “20–40 seconds” or fixed RAM/GPU numbers as historical measurements only.
 
-### Resource Usage
-- **CPU:** 15-20% idle, 400-500% during generation
-- **RAM:** 5.2GB / 7.4GB (70%)
-- **GPU Memory:** 2.2GB (model + cache)
+When benchmarking, capture:
 
----
+- Jetson model and power mode;
+- software commit;
+- model/runtime version;
+- first-token and complete-response latency;
+- CPU/GPU/RAM/thermal state;
+- whether the model was cold or already loaded.
 
-## 🔐 CREDENTIALS
+## 10. Before calling a build deploy-ready
 
-### MQTT Broker
-- **Host:** localhost:1883
-- **Username:** sentient
-- **Password:** <REDACTED_ROTATE_MQTT_PASSWORD>
+Use [PRODUCTION_STATUS.md](PRODUCTION_STATUS.md) and [PROJECT_STATUS.md](PROJECT_STATUS.md). Current release gates include repeatable installation, automated acceptance tests, service recovery, secrets/network review, sustained resource testing, tagged releases and rollback/recovery evidence.
 
-### Redis
-- **Host:** localhost:6379
-- **Database:** 0
-- **Password:** None (local only)
+## Documentation
 
-### Ollama
-- **Host:** localhost:11434
-- **Model:** qwen3:4b (2.5GB)
-- **GPU:** CUDA enabled (28/37 layers)
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) — current maturity/evidence boundary
+- [SECURITY.md](SECURITY.md) — credential/network rules and MQTT rotation note
+- [PRODUCTION_STATUS.md](PRODUCTION_STATUS.md) — release-readiness gates
+- [ARCHITECTURE.md](ARCHITECTURE.md) — architecture snapshot
+- [TESTING_GUIDE.md](TESTING_GUIDE.md) — deeper testing workflow
+- [CLI_DEPLOYMENT_GUIDE.md](CLI_DEPLOYMENT_GUIDE.md) — deployment/CLI notes
 
----
-
-## 📚 MORE DOCUMENTATION
-
-- **TESTING_GUIDE.md** - Comprehensive testing procedures
-- **PRODUCTION_STATUS.md** - Full system status and assessment
-- **FAST_MODE_IMPLEMENTATION.md** - Performance optimization details
-- **launch-testing.sh** - Interactive testing launcher
-
----
-
-## 🆘 NEED HELP?
-
-### Check Service Health
-```bash
-./launch-testing.sh
-# Select option 5: Test HTTP APIs
-```
-
-### Full System Reset
-```bash
-# Stop all
-sudo systemctl stop sentient-*.service
-
-# Restart infrastructure
-sudo systemctl restart mosquitto redis-server ollama
-
-# Start all
-sudo systemctl start sentient-*.service
-
-# Verify
-systemctl is-active sentient-*.service | grep -v active || echo "All services active"
-```
-
-### Performance Debugging
-```bash
-# Check Ollama GPU usage
-sudo journalctl -u ollama -n 20 | grep -E "(GPU|offload|CUDA)"
-
-# Check contemplation timing
-sudo journalctl -u sentient-contemplation-http -n 50 | grep "Generated response"
-
-# Check conversation flow
-sudo journalctl -u sentient-conversation -n 50 | grep -E "(Processing|timeout)"
-```
-
----
-
-## ✅ SUCCESS CRITERIA
-
-Your system is working correctly if:
-- [x] `systemctl is-active sentient-*.service` shows mostly "active"
-- [x] Web chat at http://192.168.1.159:3001 loads
-- [x] You can send a message and get a response (even if slow)
-- [x] Response is conversational (not just "Sorry, I need a moment...")
-- [x] Services survive restart
-
----
-
-**System Ready:** ✅ YES
-**Documentation Complete:** ✅ YES
-**Production Status:** ✅ READY (with Jetson limitations documented)
-
-**Questions?** Check TESTING_GUIDE.md for detailed procedures.
-
-*Last Updated: 2026-01-29*
+Historical implementation summaries remain in the repository as engineering history. When they conflict with the documents above, the current status/security documents take precedence.
