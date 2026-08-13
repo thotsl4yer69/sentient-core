@@ -8,48 +8,62 @@ __pycache__/
 dist/
 build/
 *.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 venv/
 .venv/
 env/
 
-# IDE
+# IDE / local tooling
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.omc/
+.superpowers/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Data (user-specific, large)
+# Data (user-specific / runtime)
 data/memory/
 data/embeddings/
 data/*.db
 data/*.sqlite
+data/*.sqlite3
 
-# Logs
+# Logs / runtime
 *.log
 logs/
-
-# Runtime
 *.pid
+*.sock
 
-# OMC (development tooling)
-.omc/
-
-# Secrets / config overrides
-*.env
+# Secrets / local config overrides
 .env
+*.env
+.env.local
+.env.*.local
 config/secrets.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# Generated icons script (keep the PNGs)
+# Backups / generated archives
+*.bak
+*.zip
+
+# Generated icons script (keep generated PNG assets intentionally)
 static/icons/generate_icons.py
 
-# ML models (too large for git)
+# ML models / compiled engines (large or target-specific)
 models/*.onnx
 models/*.engine
 models/*.trt
