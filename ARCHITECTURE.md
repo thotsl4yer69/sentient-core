@@ -406,7 +406,7 @@ IDLE ─────> PROCESSING ─────> RESPONDING ─────> ID
 broker = "localhost"
 port = 1883
 username = "sentient"
-password = "sentient1312"
+password = "<REDACTED_ROTATE_MQTT_PASSWORD>"
 
 [redis]
 host = "localhost"
@@ -515,7 +515,7 @@ Log levels:
 - **APIs:** localhost only (8001-8003)
 
 ### Authentication
-- **MQTT:** Username/password (sentient/sentient1312)
+- **MQTT:** Username/password (sentient/<REDACTED_ROTATE_MQTT_PASSWORD>)
 - **Redis:** None (localhost trusted)
 - **HTTP APIs:** None (localhost trusted)
 

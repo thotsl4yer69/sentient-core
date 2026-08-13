@@ -132,7 +132,7 @@ Set in `/etc/systemd/system/sentient-voice.service` or `.env`:
 MQTT_BROKER=localhost        # MQTT broker hostname
 MQTT_PORT=1883               # MQTT broker port
 MQTT_USER=sentient           # MQTT username
-MQTT_PASS=sentient1312      # MQTT password
+MQTT_PASS=<REDACTED_ROTATE_MQTT_PASSWORD>      # MQTT password
 ```
 
 ### Audio Configuration

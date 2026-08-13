@@ -84,12 +84,12 @@ sudo journalctl -u sentient-wake-word.service -n 20 -f
 
 **Subscribe to all topics:**
 ```bash
-mosquitto_sub -h localhost -u sentient -P sentient1312 -t "sentient/#" -v
+mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t "sentient/#" -v
 ```
 
 **Send test message:**
 ```bash
-mosquitto_pub -h localhost -u sentient -P sentient1312 \
+mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
   -t "sentient/persona/chat/input" \
   -m '{"text": "Test message", "user": "Jack", "timestamp": "2026-01-29T10:00:00+11:00"}'
 ```
@@ -245,7 +245,7 @@ sudo systemctl restart sentient-<service-name>.service
 
 2. Test authentication:
    ```bash
-   mosquitto_pub -h localhost -u sentient -P sentient1312 \
+   mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
      -t "test" -m "test" -d
    ```
 
@@ -307,7 +307,7 @@ sudo systemctl enable sentient-*.service
 `/opt/sentient-core/config/cortana.toml`
 
 Contains:
-- MQTT credentials (sentient/sentient1312)
+- MQTT credentials (sentient/<REDACTED_ROTATE_MQTT_PASSWORD>)
 - Redis connection
 - Ollama model settings
 - Service topics
@@ -384,7 +384,7 @@ All components communicate via:
 
 1. **Primary Test:** Open http://192.168.1.159:3001 and send a chat message
 2. **Monitor Logs:** `sudo journalctl -u sentient-conversation.service -f`
-3. **Observe MQTT:** `mosquitto_sub -h localhost -u sentient -P sentient1312 -t "sentient/#" -v`
+3. **Observe MQTT:** `mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t "sentient/#" -v`
 4. **Test Voice:** Say "Hey Cortana" with audio input enabled
 
 ---

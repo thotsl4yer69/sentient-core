@@ -231,12 +231,12 @@ sudo systemctl restart sentient-cortana
 sudo systemctl status sentient-cortana
 
 # Test Cortana response
-mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'Hello Cortana, who are you?'
 
 # Listen for response
-mosquitto_sub -h localhost -p 1883 -u sentient -P sentient1312 \
+mosquitto_sub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/output'
 ```
 

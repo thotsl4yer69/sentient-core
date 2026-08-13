@@ -28,12 +28,12 @@ self.system_prompt = load_personality()
 ### Step 3: Test Integration
 Send a test message to Cortana:
 ```bash
-mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'Hello Cortana, how are you today?'
 
 # Listen for response
-mosquitto_sub -h localhost -p 1883 -u sentient -P sentient1312 \
+mosquitto_sub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/output'
 ```
 
@@ -256,7 +256,7 @@ def update_avatar_emotion(detected_emotion, threat_level):
 #!/bin/bash
 # Test that Cortana responds with personality traits
 
-result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'Tell me about yourself' 2>&1)
 
@@ -270,7 +270,7 @@ echo "Expected: References to genuine capability and protection"
 #!/bin/bash
 # Test that Cortana doesn't claim false emotions
 
-result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'What are you doing?' 2>&1)
 
@@ -285,7 +285,7 @@ echo "Expected: References to actual operational tasks"
 #!/bin/bash
 # Test that threat responses are data-grounded
 
-result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'Is there anything I should know about?' 2>&1)
 
@@ -300,7 +300,7 @@ echo "Expected: Data-grounded assessment with specific details"
 #!/bin/bash
 # Test natural, direct communication
 
-result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P sentient1312 \
+result=$(mosquitto_pub -h localhost -p 1883 -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
     -t 'sentient/persona/chat/input' \
     -m 'How are things looking?' 2>&1)
 

@@ -119,7 +119,7 @@ class ContemplationConfig:
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883
     mqtt_username: Optional[str] = "sentient"
-    mqtt_password: Optional[str] = "sentient1312"
+    mqtt_password: Optional[str] = os.environ["MQTT_PASS"]
 
     # Temperature settings for different purposes
     voice_temperature: float = 0.8

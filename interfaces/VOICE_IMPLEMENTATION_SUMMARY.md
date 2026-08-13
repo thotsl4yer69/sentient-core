@@ -311,7 +311,7 @@ VAD_AGGRESSIVENESS = 3        # VAD sensitivity (0=lenient, 3=aggressive)
 MQTT_BROKER=localhost
 MQTT_PORT=1883
 MQTT_USER=sentient
-MQTT_PASS=sentient1312
+MQTT_PASS=<REDACTED_ROTATE_MQTT_PASSWORD>
 ```
 
 ### Tuning Recommendations

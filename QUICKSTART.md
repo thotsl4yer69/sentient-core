@@ -86,10 +86,10 @@ sudo systemctl restart ollama
 ### Test MQTT Messaging
 ```bash
 # Subscribe to all topics
-mosquitto_sub -h localhost -u sentient -P sentient1312 -t "sentient/#" -v
+mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t "sentient/#" -v
 
 # Send test message
-mosquitto_pub -h localhost -u sentient -P sentient1312 \
+mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
   -t "sentient/persona/chat/input" \
   -m '{"text": "Hello Cortana", "user": "Jack", "timestamp": "2026-01-29T12:00:00+11:00"}'
 ```
@@ -114,11 +114,11 @@ python3 cli.py
 ### 3. MQTT Direct
 ```bash
 # Listen for responses
-mosquitto_sub -h localhost -u sentient -P sentient1312 \
+mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
   -t "sentient/persona/chat/output" -v
 
 # Send message (in another terminal)
-mosquitto_pub -h localhost -u sentient -P sentient1312 \
+mosquitto_pub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> \
   -t "sentient/persona/chat/input" \
   -m '{"text": "Your message", "user": "Jack", "timestamp": "2026-01-29T12:00:00+11:00"}'
 ```
@@ -204,7 +204,7 @@ sudo systemctl start sentient-<service-name>.service
 ### MQTT Broker
 - **Host:** localhost:1883
 - **Username:** sentient
-- **Password:** sentient1312
+- **Password:** <REDACTED_ROTATE_MQTT_PASSWORD>
 
 ### Redis
 - **Host:** localhost:6379

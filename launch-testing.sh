@@ -46,7 +46,7 @@ echo "2. TERMINAL CLI"
 echo "   Command: cd /opt/sentient-core/interfaces && python3 cli.py"
 echo ""
 echo "3. MQTT MONITORING"
-echo "   Command: mosquitto_sub -h localhost -u sentient -P sentient1312 -t 'sentient/#' -v"
+echo "   Command: mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t 'sentient/#' -v"
 echo ""
 echo "4. SERVICE LOGS"
 echo "   Command: sudo journalctl -u sentient-conversation.service -f"
@@ -106,7 +106,7 @@ case $choice in
         echo "Press Ctrl+C to stop"
         echo ""
         sleep 2
-        mosquitto_sub -h localhost -u sentient -P sentient1312 -t "sentient/#" -v
+        mosquitto_sub -h localhost -u sentient -P <REDACTED_ROTATE_MQTT_PASSWORD> -t "sentient/#" -v
         ;;
     4)
         echo ""

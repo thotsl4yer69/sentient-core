@@ -30,6 +30,7 @@ Features:
 - Smooth transitions between states
 """
 
+import os
 import asyncio
 import json
 import logging
@@ -63,7 +64,7 @@ except ImportError:
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_USER = "sentient"
-MQTT_PASS = "sentient1312"
+MQTT_PASS = os.environ["MQTT_PASS"]
 
 # WebSocket Server Configuration
 WEBSOCKET_HOST = "0.0.0.0"

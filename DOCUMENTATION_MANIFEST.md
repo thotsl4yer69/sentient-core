@@ -95,7 +95,7 @@ This tarball contains complete documentation for the Sentient Core v7.0 AI Compa
 
 10. **config/cortana.toml**
     - System-wide configuration
-    - MQTT broker settings (sentient/sentient1312)
+    - MQTT broker settings (sentient/<REDACTED_ROTATE_MQTT_PASSWORD>)
     - Redis connection
     - Ollama model configuration
     - Service port assignments
@@ -215,7 +215,7 @@ cat TESTING_GUIDE.md
 - **Perception API:** http://192.168.1.159:8003
 
 ### Credentials
-- **MQTT:** sentient / sentient1312
+- **MQTT:** sentient / <REDACTED_ROTATE_MQTT_PASSWORD>
 - **Redis:** localhost:6379 (no auth)
 - **Ollama:** localhost:11434
 

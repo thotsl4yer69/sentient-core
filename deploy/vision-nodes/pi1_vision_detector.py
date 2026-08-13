@@ -18,6 +18,7 @@ Deploy:
     sudo systemctl restart sentient-vision
 """
 
+import os
 import json
 import time
 import signal
@@ -51,7 +52,7 @@ MODEL_PATH = "/usr/share/hailo-models/yolov8s_h8.hef"
 MQTT_BROKER = "192.168.1.159"
 MQTT_PORT = 1883
 MQTT_USER = "sentient"
-MQTT_PASS = "sentient1312"
+MQTT_PASS = os.environ["MQTT_PASS"]
 CAMERA_ID = "pi1"
 LOCATION = "portable"
 

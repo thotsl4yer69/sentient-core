@@ -14,6 +14,7 @@ Features:
   - MJPEG stream with bounding box overlays on port 8091
 """
 
+import os
 import json
 import time
 import signal
@@ -40,7 +41,7 @@ MODEL_PATH = "/opt/sentient-core/models/yolov8n.onnx"
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_USER = "sentient"
-MQTT_PASS = "sentient1312"
+MQTT_PASS = os.environ["MQTT_PASS"]
 CAMERA_ID = "jetson"
 LOCATION = "desk"
 
