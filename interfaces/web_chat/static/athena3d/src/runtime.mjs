@@ -150,7 +150,8 @@ export class Athena3D {
   }
   setVisionTarget(target) {
     const gaze=visionGaze(target); this.lastVision=performance.now();
-    this.setState('seeing'); this.setGaze(gaze.x,gaze.y,target.confidence ?? 1);
+    if(this.state!=='speaking')this.setState('seeing');
+    this.setGaze(gaze.x,gaze.y,target.confidence ?? 1);
   }
   processPhonemes(data={}) {
     const timeline=phonemeTimeline(data);
