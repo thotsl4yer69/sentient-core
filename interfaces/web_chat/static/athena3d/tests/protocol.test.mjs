@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {booleanValue,visionGaze,normalizeState,phonemeTimeline,visemeName,decodeEvent} from '../src/protocol.mjs';
+
+test('nested false strings remain false',()=>{for(const v of [false,0,'false','off',{active:'false'},{speaking:'false'}])assert.equal(booleanValue(v),false);});
+test('true values are parsed explicitly',()=>{for(const v of [true,1,'true',{active:'on'}])assert.equal(booleanValue(v),true);});
+test('normalized centre is straight ahead',()=>assert.deepEqual(visionGaze({cx:.5,cy:.5}),{x:0,y:0}));
+test('normalized top right uses upward positive gaze',()=>assert.deepEqual(visionGaze({cx:1,cy:0}),{x:1,y:1}));
+test('pixel centre is normalized with frame dimensions',()=>assert.deepEqual(visionGaze({cx:400,cy:240,image_width:800,image_height:480}),{x:0,y:0}));
+test('bbox uses xyxy centre',()=>assert.deepEqual(visionGaze({bbox:[200,120,600,360],image_width:800,image_height:480}),{x:0,y:0}));
+test('pixel positions require real frame dimensions',()=>assert.throws(()=>visionGaze({cx:400,cy:240}),/require/));
+test('reversed bounds rejected',()=>assert.throws(()=>visionGaze({bbox:[.8,.8,.2,.2]}),/Invalid/));
+test('NaN vision values rejected',()=>assert.throws(()=>visionGaze({cx:NaN,cy:.5}),/finite/));
+test('gaze coordinates retain their meaning',()=>assert.deepEqual(visionGaze({x:-.4,y:.3,space:'gaze'}),{x:-.4,y:.3}));
+test('state aliases are deterministic',()=>{assert.equal(normalizeState('processing'),'thinking');assert.equal(normalizeState('standby'),'sleep');assert.equal(normalizeState('unknown'),'idle');});
+test('long utterances stay in seconds',()=>{const p=phonemeTimeline({duration:30,phonemes:[{phoneme:'aa',time:25,duration:1}]});assert.equal(p[0].start,25);});
+test('milliseconds must be declared',()=>{const p=phonemeTimeline({unit:'milliseconds',phonemes:[{phoneme:'aa',time:25000,duration:1000}]});assert.equal(p[0].start,25);assert.equal(p[0].end,26);});
+test('invalid phoneme durations rejected',()=>assert.throws(()=>phonemeTimeline({phonemes:[{time:0,duration:-1}]}),/timing/));
+test('phonemes are sorted without guessing missing timing',()=>{const p=phonemeTimeline({phonemes:[{phoneme:'m',time:1,duration:.2},{phoneme:'aa',time:0,duration:.4}]});assert.equal(p[0].shape,'aa');assert.throws(()=>phonemeTimeline({phonemes:['aa']}),/timing/);});
+test('phoneme and viseme aliases map to real shapes',()=>{assert.equal(visemeName('m'),'PP');assert.equal(visemeName('viseme_aa'),'aa');assert.equal(visemeName('AH0'),'aa');assert.equal(visemeName(14),'U');});
+test('malformed event envelopes are ignored',()=>{assert.equal(decodeEvent(null),null);assert.equal(decodeEvent([]),null);assert.deepEqual(decodeEvent({type:'thinking',data:{active:true}}),{topic:'thinking',payload:{active:true}});});
