@@ -35,6 +35,7 @@ def atomic_json(path, value):
         json.dump(value, stream, indent=2)
         stream.write('\n')
         temporary = stream.name
+    os.chmod(temporary, path.stat().st_mode & 0o777 if path.exists() else 0o644)
     os.replace(temporary, path)
 
 def audit(path):

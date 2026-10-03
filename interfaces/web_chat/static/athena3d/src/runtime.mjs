@@ -56,7 +56,7 @@ export class Athena3D {
       lightAmbientColor:0xffffff, lightAmbientIntensity:0.8,
       lightDirectColor:0xffeddb, lightDirectIntensity:5, lightDirectPhi:0.8, lightDirectTheta:0.35,
       lightSpotColor:0x83c7db, lightSpotIntensity:3, lightSpotPhi:0.8, lightSpotTheta:3.8,
-      update:() => this.frame()
+      update:dt => this.frame(dt)
     });
     return head;
   }
@@ -198,7 +198,7 @@ export class Athena3D {
     const raw=atob(data.replace(/^data:[^,]+,/,''));
     return this.playAudio(Uint8Array.from(raw,c=>c.charCodeAt(0)), timing);
   }
-  frame() {
+  frame(dt = 33.333) {
     if (!this.loaded || this.destroyed) return;
     const now=performance.now();
     if (now-this.metricEpoch>=1000) {
@@ -221,17 +221,27 @@ export class Athena3D {
       jaw=clamp((Math.sqrt(energy/this.samples.length)-0.008)*4.0,0,0.7);
     }
     this.activeViseme=shape;
+    const smoothing=1-Math.exp(-Math.min(100,Math.max(1,dt))/45);
+    this.driveMorph('eyesClosed',this.state==='sleep'?1:0,1-Math.exp(-Math.min(100,Math.max(1,dt))/110));
     for(const key of LIP_KEYS) {
       const value=key==='jawOpen' ? jaw : key===`viseme_${shape}` ? strength : 0;
-      if (this.head.mtAvatar[key]) this.head.setValue(key,value);
+      this.driveMorph(key,value,smoothing);
     }
+  }
+  driveMorph(key, value, smoothing=1) {
+    // Use the pinned engine's realtime lane, not its slower expression easing.
+    // Speech timing is already tied to the audio clock in frame().
+    const morph=this.head?.mtAvatar[key];
+    if(!morph)return;
+    const previous=morph.realtime??morph.value??0;
+    Object.assign(morph,{realtime:previous+(value-previous)*smoothing,needsUpdate:true});
   }
   stopSpeech(resetState=true) {
     ++this.audioGeneration;
     if (this.audio) {this.audio.onended=null;try{this.audio.stop();}catch{}this.audio.disconnect();}
     this.analyzer?.disconnect();this.audio=null;this.analyzer=null;this.samples=null;
     this.timeline=[];this.externalSpeaking=false;this.activeViseme='sil';this.lipMode='none';
-    if(this.loaded){this.head.stopSpeaking();for(const key of LIP_KEYS)if(this.head.mtAvatar[key])this.head.setValue(key,0);}
+    if(this.loaded){this.head.stopSpeaking();for(const key of LIP_KEYS)this.driveMorph(key,0);}
     if(resetState)this.state='idle';
     this.notify();
   }
