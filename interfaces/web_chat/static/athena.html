@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#02070d" />
+  <title>Athena</title>
+  <style>
+    *{box-sizing:border-box} html,body{width:100%;height:100%;margin:0;background:#02070d;overflow:hidden;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#e9f6ff}
+    #stage{position:fixed;inset:0;background:#02070d;touch-action:none}
+    #avatar-canvas{width:100%;height:100%;display:block}
+    .chrome{position:fixed;inset:0;pointer-events:none}
+    .top{position:absolute;top:12px;right:14px;display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(91,202,255,.18);border-radius:999px;background:rgba(2,8,14,.45);backdrop-filter:blur(6px);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(225,244,255,.72)}
+    .dot{width:6px;height:6px;border-radius:50%;background:#ff816e;box-shadow:0 0 10px currentColor}.online .dot{background:#58d9ff}.connecting .dot{background:#ffc46b}
+    .bottom{position:absolute;left:14px;right:14px;bottom:11px;display:flex;justify-content:space-between;align-items:end;gap:16px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:rgba(205,230,246,.55)}
+    .status{max-width:72%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hint{opacity:.6}
+    @media(max-height:360px){.top{top:7px;right:8px;padding:5px 8px}.bottom{left:8px;right:8px;bottom:6px}}
+  </style>
+</head>
+<body>
+  <main id="stage" aria-label="Athena avatar display">
+    <canvas id="avatar-canvas"></canvas>
+  </main>
+  <div class="chrome">
+    <div id="link" class="top connecting"><span class="dot"></span><span id="linkText">CONNECTING</span></div>
+    <div class="bottom"><span id="detail" class="status">CORETANA LINK</span><span class="hint">tap for fullscreen</span></div>
+  </div>
+
+  <script src="/static/avatar-hologram.js?v=athena-1"></script>
+  <script>
+  (() => {
+    'use strict';
+    const link = document.getElementById('link');
+    const linkText = document.getElementById('linkText');
+    const detail = document.getElementById('detail');
+    let ws = null, retry = 0, closedByPage = false;
+
+    const setLink = (state, text) => {
+      link.className = 'top ' + state;
+      linkText.textContent = text;
+    };
+
+    const boolValue = (v) => {
+      if (typeof v === 'boolean') return v;
+      if (v && typeof v === 'object') return Boolean(v.active ?? v.speaking ?? v.is_speaking ?? v.value);
+      return ['1','true','on','yes','speaking'].includes(String(v).toLowerCase());
+    };
+
+    const firstDetection = (p) => {
+      if (!p) return null;
+      if (Array.isArray(p.detections) && p.detections.length) return p.detections[0];
+      if (Array.isArray(p.objects) && p.objects.length) return p.objects[0];
+      if (p.bbox || p.center_x != null || p.cx != null) return p;
+      return null;
+    };
+
+    const apply = (msg) => {
+      const api = window.avatarRenderer;
+      if (!api || !msg) return;
+      const topic = String(msg.topic || msg.type || '');
+      const p = msg.payload ?? msg.data ?? msg;
+
+      if (topic.includes('persona/state')) {
+        if (p.emotion) api.setEmotion?.(p.emotion, p.emotion_intensity ?? p.intensity ?? .6);
+        if (p.speaking != null) api.setSpeaking?.(boolValue(p.speaking));
+        if (p.thinking != null) api.setState?.(boolValue(p.thinking) ? 'thinking' : 'idle');
+        if (p.attention) api.setGaze?.(p.attention.x ?? 0, p.attention.y ?? 0, p.attention.focus ?? .6);
+      } else if (topic.includes('emotion') || topic.includes('expression')) {
+        api.setEmotion?.(p.emotion ?? p.expression ?? p.value ?? p.message ?? 'neutral', p.intensity ?? .7);
+      } else if (topic.includes('phoneme')) {
+        api.processPhonemes?.(p);
+      } else if (topic.includes('speaking') || topic.includes('tts/started')) {
+        api.setSpeaking?.(boolValue(p));
+        if (boolValue(p)) api.setState?.('speaking');
+      } else if (topic.includes('tts/completed')) {
+        api.setSpeaking?.(false); api.setState?.('idle');
+      } else if (topic.includes('thinking')) {
+        const active = boolValue(p.is_thinking ?? p.thinking ?? p.active ?? p);
+        api.setState?.(active ? 'thinking' : 'idle');
+      } else if (topic.includes('attention')) {
+        api.setGaze?.(p.x ?? 0, p.y ?? 0, p.focus ?? .7);
+      } else if (topic.includes('wake')) {
+        api.setState?.('listening'); api.setAttentionState?.('listening');
+        setTimeout(() => api.setAttentionState?.('relaxed'), 1800);
+      } else if (topic.includes('vision') || topic.includes('detection')) {
+        const target = firstDetection(p);
+        if (target) api.setVisionTarget?.({...target, image_width:p.image_width ?? p.frame_width, image_height:p.image_height ?? p.frame_height});
+      }
+
+      const d = api.getDiagnostics?.();
+      if (d) detail.textContent = 'CORETANA · ' + String(d.state || 'idle').toUpperCase() + ' · ' + (d.fps || 0) + ' FPS';
+    };
+
+    const endpoint = () => {
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('ws')) return qs.get('ws');
+      const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+      return scheme + '://' + location.hostname + ':9001';
+    };
+
+    const connect = () => {
+      if (closedByPage) return;
+      setLink('connecting', 'CONNECTING');
+      try { ws = new WebSocket(endpoint()); }
+      catch (_) { return schedule(); }
+      ws.onopen = () => { retry = 0; setLink('online', 'ATHENA ONLINE'); };
+      ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
+      ws.onerror = () => setLink('', 'LINK ERROR');
+      ws.onclose = () => { setLink('', 'OFFLINE'); schedule(); };
+    };
+
+    const schedule = () => {
+      if (closedByPage) return;
+      const ms = Math.min(10000, 900 * Math.pow(1.7, retry++));
+      setTimeout(connect, ms);
+    };
+
+    document.getElementById('stage').addEventListener('click', () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(()=>{});
+    });
+
+    window.athenaDemo = (state='idle') => {
+      const a = window.avatarRenderer;
+      const s = String(state).toLowerCase();
+      a?.setSpeaking?.(s === 'speaking');
+      a?.setState?.(s);
+      a?.setAttentionState?.(s === 'listening' ? 'listening' : s === 'seeing' ? 'focused' : 'relaxed');
+      a?.setEmotion?.(s === 'alert' ? 'alert' : s === 'thinking' ? 'thoughtful' : s === 'happy' ? 'happy' : 'neutral', .8);
+      if (s === 'seeing') a?.setVisionTarget?.({cx:.72, cy:.42, confidence:.9});
+    };
+
+    addEventListener('beforeunload', () => { closedByPage = true; try { ws?.close(); } catch (_) {} });
+    connect();
+  })();
+  </script>
+</body>
+</html>
