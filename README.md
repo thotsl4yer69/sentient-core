@@ -111,6 +111,10 @@ Sentient Core is the primary edge-AI case study in this account because it bring
 
 **edge compute · Linux · Python · local AI · MQTT · Redis · APIs · speech · service management · UI · systems integration**
 
+## MAZLABZ illustrated goods
+
+For fellow night-shift builders and retro-computing fans: **[Soft Reset — Sleepy Opossum and Retro Computer](https://www.redbubble.com/i/t-shirt/Soft-Reset-Sleepy-Opossum-and-Retro-Computer-by-ThotSl4yer69/184817388/z5wf)** is a separate MAZLABZ illustration available through Redbubble. Optional art link, not part of Sentient Core.
+
 ---
 
 **MAZLABZ applied R&D — build, integrate, test, document.**
