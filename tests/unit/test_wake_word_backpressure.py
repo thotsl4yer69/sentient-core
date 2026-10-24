@@ -22,6 +22,11 @@ def service(monkeypatch):
             self._tasks = []
             self.mqtt_publish = AsyncMock()
 
+        def on_mqtt(self, topic):
+            def decorator(callback):
+                return callback
+            return decorator
+
     # Only hardware/framework boundaries are substituted. Queue, threads,
     # asyncio, capture loop, detection loop and cooldown are production code.
     substitutes = {
