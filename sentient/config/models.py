@@ -56,7 +56,7 @@ class NtfyConfig:
 @dataclass
 class WakeWordConfig:
     """Wake word detection configuration."""
-    model: str = "hey_cortana"
+    model: str = "hey_jarvis"
     sensitivity: float = 0.5
 
 
