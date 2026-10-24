@@ -12,6 +12,7 @@ Architecture:
 """
 
 import asyncio
+import json
 import time
 import threading
 import queue
@@ -59,6 +60,47 @@ class WakeWordService(SentientService):
         self.stream: Optional[pyaudio.Stream] = None
         self.oww_model: Optional[Model] = None
         self.active_model_key: Optional[str] = None
+        self._speech_active = False
+        self._turn_busy = False
+        self._gate_updated = time.monotonic()
+        self._suspended_until = 0.0
+
+        @self.on_mqtt(mqtt_topics.TTS_STARTED)
+        async def tts_started(topic: str, payload: bytes):
+            self._speech_active = True
+            self._gate_updated = time.monotonic()
+
+        @self.on_mqtt(mqtt_topics.TTS_COMPLETED)
+        async def tts_completed(topic: str, payload: bytes):
+            self._speech_active = False
+            self._gate_updated = time.monotonic()
+            self._suspended_until = self._gate_updated + 0.3
+
+        @self.on_mqtt(mqtt_topics.AVATAR_STATE)
+        async def avatar_state(topic: str, payload: bytes):
+            try:
+                state = json.loads(payload.decode("utf-8")).get("state")
+            except (ValueError, AttributeError):
+                return
+            if state in {"alert", "listening", "processing", "thinking", "responding", "speaking"}:
+                self._turn_busy = True
+                self._gate_updated = time.monotonic()
+            elif state == "idle":
+                self._turn_busy = False
+                self._gate_updated = time.monotonic()
+                self._suspended_until = self._gate_updated + 0.3
+
+    def _should_suspend(self) -> bool:
+        now = time.monotonic()
+        # Recover if a downstream service fails without sending an idle/end event.
+        if self._speech_active or self._turn_busy:
+            if now - self._gate_updated < 90.0:
+                return True
+            self._speech_active = False
+            self._turn_busy = False
+            self._suspended_until = now + 0.3
+            self.logger.warning("Wake detection gate expired; re-arming after silence")
+        return now < self._suspended_until
 
         # Threading for audio capture
         self.audio_thread: Optional[threading.Thread] = None
@@ -187,12 +229,24 @@ class WakeWordService(SentientService):
         """Main detection loop - processes audio from the queue."""
         self.logger.info("Detection loop started")
 
+        was_suspended = False
         try:
             while self._running:
                 try:
                     audio_array = await asyncio.to_thread(
                         self.audio_queue.get, True, 1.0
                     )
+
+                    if self._should_suspend():
+                        was_suspended = True
+                        continue
+                    if was_suspended:
+                        # Clear the classifier's audio history so the assistant's
+                        # last spoken phrase cannot activate it after playback.
+                        reset = getattr(self.oww_model, "reset", None)
+                        if callable(reset):
+                            reset()
+                        was_suspended = False
 
                     prediction = self.oww_model.predict(audio_array)
 
@@ -227,6 +281,8 @@ class WakeWordService(SentientService):
             return
 
         self.last_detection_time = current_time
+        self._turn_busy = True
+        self._gate_updated = current_time
 
         payload = {
             "timestamp": time.time(),
