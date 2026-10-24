@@ -21,7 +21,7 @@ def _terms(value):
     tokens = re.findall(r"[a-z0-9]+", str(value).lower().replace("_", " "))
     ignored = {
         "a", "an", "the", "my", "in", "at", "of", "to", "all",
-        "light", "lights", "lamp", "lamps", "switch", "switches",
+        "light", "lights", "switch", "switches",
         "tv", "television", "speaker", "speakers", "player",
         "scene", "script", "device", "devices", "room",
     }
