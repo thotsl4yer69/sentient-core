@@ -150,6 +150,7 @@ def test_detection_consumes_thread_queue_and_publishes(service):
         return {"test": 0.9}
 
     instance.oww_model = SimpleNamespace(predict=predict)
+    instance.active_model_key = "test"
     asyncio.run(instance._detection_loop())
     assert seen == [b"audio"]
     instance.mqtt_publish.assert_awaited_once()
@@ -168,3 +169,54 @@ def test_empty_queue_allows_other_tasks_and_cancellation(service):
             await task
 
     asyncio.run(scenario())
+
+def test_configured_model_only_accepts_exact_matching_prediction(service):
+    module, instance = service
+    triggered = []
+    instance.oww_model = SimpleNamespace(
+        predict=lambda frame: {"other_model": 0.99, "hey_jarvis_v0.1": 0.85}
+    )
+    instance.active_model_key = "hey_jarvis_v0.1"
+
+    async def publish(confidence):
+        triggered.append(confidence)
+        instance._running = False
+
+    instance._publish_detection = publish
+    instance.audio_queue.put_nowait(b"audio")
+    asyncio.run(instance._detection_loop())
+    assert triggered == [0.85]
+
+
+def test_model_initialization_rejects_nonexistent_phrase(service, monkeypatch):
+    module, instance = service
+    instance.wake_model_name = "not_a_trained_model"
+    monkeypatch.setattr(module, "Model", lambda **kw: SimpleNamespace(
+        models={"hey_jarvis_v0.1": object()}
+    ))
+    assert not instance._initialize_model()
+    assert instance.active_model_key is None
+
+
+def test_model_initialization_selects_hey_jarvis(service, monkeypatch):
+    module, instance = service
+    instance.wake_model_name = "hey_jarvis"
+    monkeypatch.setattr(module, "Model", lambda **kw: SimpleNamespace(
+        models={"hey_jarvis_v0.1": object(), "alexa": object()}
+    ))
+    assert instance._initialize_model()
+    assert instance.active_model_key == "hey_jarvis_v0.1"
+
+
+def test_speech_gate_blocks_then_rearms(service, monkeypatch):
+    module, instance = service
+    clock = [100.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    instance._speech_active = True
+    instance._gate_updated = clock[0]
+    assert instance._should_suspend()
+    instance._speech_active = False
+    instance._suspended_until = clock[0] + 0.3
+    assert instance._should_suspend()
+    clock[0] += 0.31
+    assert not instance._should_suspend()
