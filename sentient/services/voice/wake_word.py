@@ -15,6 +15,7 @@ import asyncio
 import time
 import threading
 import queue
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -57,6 +58,7 @@ class WakeWordService(SentientService):
         self.audio: Optional[pyaudio.PyAudio] = None
         self.stream: Optional[pyaudio.Stream] = None
         self.oww_model: Optional[Model] = None
+        self.active_model_key: Optional[str] = None
 
         # Threading for audio capture
         self.audio_thread: Optional[threading.Thread] = None
@@ -93,28 +95,58 @@ class WakeWordService(SentientService):
             return False
 
     def _initialize_model(self) -> bool:
-        """Initialize OpenWakeWord model."""
+        """Load and verify exactly the requested wake model.
+
+        A phrase in the config is not a trained classifier. Built-in model
+        names must match an installed OpenWakeWord model; custom phrases
+        require an existing .onnx or .tflite model file.
+        """
         try:
-            self.oww_model = Model(
-                wakeword_model_paths=[],
-                enable_speex_noise_suppression=False,
-            )
+            selected = str(self.wake_model_name).strip()
+            if not selected:
+                raise ValueError("Wake-word model must be configured")
+
+            custom_file = Path(selected).expanduser() if selected.lower().endswith(
+                (".onnx", ".tflite")
+            ) else None
+            if custom_file is not None:
+                if not custom_file.is_file():
+                    raise FileNotFoundError(f"Custom wake model not found: {custom_file}")
+                kwargs = {
+                    "wakeword_models": [str(custom_file)],
+                    "enable_speex_noise_suppression": False,
+                }
+                if custom_file.suffix.lower() == ".onnx":
+                    kwargs["inference_framework"] = "onnx"
+                self.oww_model = Model(**kwargs)
+                expected = custom_file.stem.lower().replace(" ", "_")
+            else:
+                self.oww_model = Model(enable_speex_noise_suppression=False)
+                expected = selected.lower().replace(" ", "_").replace("-", "_")
 
             available = list(self.oww_model.models.keys())
-            self.logger.info(f"OpenWakeWord model initialized")
-            self.logger.info(f"Available models: {available}")
-
-            if not available:
-                self.logger.warning(
-                    "No models loaded! Service may not detect wake words."
+            matching = [
+                name for name in available
+                if name.lower().replace(" ", "_").replace("-", "_") == expected
+                or name.lower().replace(" ", "_").replace("-", "_").startswith(expected + "_v")
+            ]
+            if len(matching) != 1:
+                raise ValueError(
+                    f"Configured wake model {selected!r} matched {matching}; "
+                    f"available models: {available}. Set SENTIENT_WAKE_WORD_MODEL "
+                    "to an installed model name or trained model file."
                 )
-            else:
-                self.logger.info(f"Loaded {len(available)} wake word models")
 
+            self.active_model_key = matching[0]
+            self.logger.info(
+                "Active wake word model: %s (threshold %.2f)",
+                self.active_model_key, self.detection_threshold
+            )
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize OpenWakeWord model: {e}")
+            self.active_model_key = None
+            self.logger.error(f"Failed to initialize requested wake word: {e}")
             return False
 
     def _audio_capture_thread(self):
@@ -165,6 +197,8 @@ class WakeWordService(SentientService):
                     prediction = self.oww_model.predict(audio_array)
 
                     for model_name, score in prediction.items():
+                        if model_name != self.active_model_key:
+                            continue
                         if score >= self.detection_threshold:
                             self.logger.debug(
                                 f"Model '{model_name}' triggered: {score:.3f}"
