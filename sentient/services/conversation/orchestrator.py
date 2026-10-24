@@ -934,6 +934,34 @@ class ConversationOrchestrator(SentientService):
             self.active_conversations[conversation_id] = context
             self.last_activity[user_id] = time.time()
 
+            # Deterministic, low-latency skills do not need memory retrieval,
+            # LLM prefill, or a second LLM call. Send the executed result,
+            # rather than asking a model to invent a success confirmation.
+            direct_intent = self.system_tools.detect_intent(user_text)
+            if direct_intent and direct_intent[0] in {"clock", "home_assistant"}:
+                await self._update_state(ConversationState.RESPONDING)
+                category, command = direct_intent
+                direct_text = await self.system_tools.execute(
+                    category, command, user_text
+                )
+                response = ConversationResponse(
+                    text=direct_text, should_speak=voice_mode
+                )
+                await self._publish_response(context, response)
+                self.conversation_histories.setdefault(user_id, []).extend([
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": direct_text},
+                ])
+                self.conversation_histories[user_id] = (
+                    self.conversation_histories[user_id][-20:]
+                )
+                self.active_conversations.pop(conversation_id, None)
+                await self._update_state(
+                    ConversationState.VOICE_MODE if voice_mode
+                    else ConversationState.LISTENING
+                )
+                return
+
             # Steps 0-2: Fetch all context in parallel (independent calls)
             mood, core_memory, memories, world_state = await asyncio.gather(
                 self._get_mood(),
