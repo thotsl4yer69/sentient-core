@@ -16,8 +16,12 @@ import json
 import logging
 import re
 import time
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional, Tuple, List
+
+from sentient.services.conversation.home_assistant import HomeAssistantSkill
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +125,12 @@ class SystemTools:
             "dmesg": ["dmesg", "--time-format=reltime", "-n", "err"],
         },
 
+        # --- Deterministic Local Clock ---
+        "clock": {"current": None},
+
+        # --- Home Assistant ---
+        "home_assistant": {"handle": None},
+
         # --- Weather ---
         "weather": {
             "current_weather": None,  # handled by _get_weather
@@ -143,6 +153,19 @@ class SystemTools:
     #      process before system_info (both match "cpu"/"memory"),
     #      self_awareness before ollama (both match "model").
     INTENT_PATTERNS = {
+        # --- Deterministic clock for voice turns: anchor to avoid false matches ---
+        "clock": {
+            "current": [r"^(?:hey jarvis[, ]+)?(?:what(?:\u0027s| is) the time(?: now)?|what time is it(?: now)?|tell me the time|current time|time please|what(?:\u0027s| is) the date(?: today)?|what day is it(?: today)?|today(?:\u0027s| is) date)[?.! ]*$"],
+        },
+        "home_assistant": {
+            "handle": [r"\bhome assistant\b",
+                       r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+(?:on|off)\s+",
+                       r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+.+\s+(?:on|off)$",
+                       r"^(?:hey jarvis[, ]+)?(?:set|make|change|turn)\s+.+\s+(?:to\s+)?(?:violet|purple|blue|red|green|yellow|orange|pink|white|cyan|magenta|indigo)$",
+                       r"^(?:hey jarvis[, ]+)?(?:run|activate|start)\s+(?:the\s+)?(?:scene|script)\s+",
+                       r"^(?:hey jarvis[, ]+)?(?:pause|resume|stop|play)\s+(?:the\s+)?(?:music|media|playback|tv|speaker)",
+                       r"\b(?:list|show|which|what)\b.*\b(?:lights|switches|speakers|scenes|scripts|devices)\b"],
+        },
         # --- Most specific first ---
         "memory_tools": {
             "store_memory": [r"remember\s+that\b", r"store.*memory", r"save.*memory",
@@ -430,6 +453,8 @@ class SystemTools:
 
         # --- Special handlers ---
         handlers = {
+            ("clock", "current"): lambda: self._get_local_clock(user_message),
+            ("home_assistant", "handle"): lambda: HomeAssistantSkill().execute(user_message),
             ("system_info", "gpu_status"): lambda: self._get_gpu_info(),
             ("system_info", "temperature"): lambda: self._get_temperatures(),
             ("network", "wifi_info"): lambda: self._get_wifi_info(),
@@ -476,6 +501,18 @@ class SystemTools:
             return "Command not available."
 
         return await self._run_command(cmd_template)
+
+    async def _get_local_clock(self, utterance: str = "") -> str:
+        """Return clock facts directly from the OS, never from an LLM guess."""
+        try:
+            zone = ZoneInfo(os.environ.get("SENTIENT_TZ", "Australia/Melbourne"))
+        except (KeyError, ValueError):
+            zone = ZoneInfo("Australia/Melbourne")
+        now = datetime.now(zone)
+        lower = utterance.lower()
+        if "date" in lower or "day is it" in lower:
+            return f"Today is {now.strftime('%A %d %B %Y')} in {now.tzname()}."
+        return f"It is {now.strftime('%-I:%M %p')} in {now.tzname()} on {now.strftime('%A %d %B %Y')}."
 
     # =================================================================
     # COMBINED HANDLERS
