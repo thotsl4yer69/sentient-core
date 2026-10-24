@@ -158,8 +158,24 @@ class HomeAssistantSkill:
                 action, target = left, right
             else:
                 target, action = left, right
-            domain = "switch" if re.search(r"\bswitch(?:es)?\b", target) else "light"
-            return await self._perform(states, domain, target, "turn_" + action)
+            # Resolve across both device types; don't assume that every
+            # on/off request addresses a light rather than a switch.
+            found = []
+            candidates = []
+            for domain in ("light", "switch"):
+                chosen, choices = match_entity(states, domain, target)
+                candidates.extend(choices)
+                if chosen is not None:
+                    found.append((domain, chosen))
+            if len(found) == 1 and len(candidates) == 1:
+                return await self._perform(
+                    states, found[0][0], target, "turn_" + action
+                )
+            if candidates:
+                return "Which device? I found: " + ", ".join(
+                    self._describe(item) for item in candidates[:6]
+                ) + "."
+            return "I can't find that device in Home Assistant."
 
         match = re.fullmatch(
             r"(?:run|activate|start)\s+(?:the\s+)?(scene|script)\s+(.+)", text
