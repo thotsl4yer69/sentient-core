@@ -27,7 +27,7 @@ server = "https://ntfy.sh"
 topic = "cortana-sentient-core"
 
 [wake_word]
-model = "hey_cortana"
+model = "hey_jarvis"
 sensitivity = 0.5
 
 [conversation]
