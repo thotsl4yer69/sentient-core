@@ -60,6 +60,14 @@ class WakeWordService(SentientService):
         self.stream: Optional[pyaudio.Stream] = None
         self.oww_model: Optional[Model] = None
         self.active_model_key: Optional[str] = None
+
+        # Threading for audio capture
+        self.audio_thread: Optional[threading.Thread] = None
+        self.audio_queue: queue.Queue = queue.Queue(maxsize=MAX_QUEUED_CHUNKS)
+
+        # Detection state
+        self.last_detection_time: float = float("-inf")
+
         self._speech_active = False
         self._turn_busy = False
         self._gate_updated = time.monotonic()
@@ -101,13 +109,6 @@ class WakeWordService(SentientService):
             self._suspended_until = now + 0.3
             self.logger.warning("Wake detection gate expired; re-arming after silence")
         return now < self._suspended_until
-
-        # Threading for audio capture
-        self.audio_thread: Optional[threading.Thread] = None
-        self.audio_queue: queue.Queue = queue.Queue(maxsize=MAX_QUEUED_CHUNKS)
-
-        # Detection state
-        self.last_detection_time: float = float("-inf")
 
     def _initialize_audio(self) -> bool:
         """Initialize PyAudio stream for microphone capture."""
