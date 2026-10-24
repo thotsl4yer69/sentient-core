@@ -335,9 +335,8 @@ class VoicePipeline(SentientService):
             "alert", {"trigger": "wake_word", "confidence": confidence}
         )
 
-        # Brief delay for avatar animation
-        await asyncio.sleep(0.3)
-
+        # Start listening immediately: delaying for avatar animation clips
+        # the first spoken word after the wake phrase.
         # Record audio with VAD
         audio_bytes = await self._record_audio_with_vad()
 
