@@ -942,11 +942,11 @@ class ConversationOrchestrator(SentientService):
             # LLM prefill, or a second LLM call. Send the executed result,
             # rather than asking a model to invent a success confirmation.
             direct_intent = self.system_tools.detect_intent(user_text)
-            if direct_intent and direct_intent[0] in {"clock", "home_assistant"}:
+            if direct_intent and direct_intent[0] in {"clock", "home_assistant", "skills"}:
                 await self._update_state(ConversationState.RESPONDING)
                 category, command = direct_intent
                 direct_text = await self.system_tools.execute(
-                    category, command, user_text
+                    category, command, user_text, user_id=user_id
                 )
                 response = ConversationResponse(
                     text=direct_text, should_speak=voice_mode
@@ -994,7 +994,7 @@ class ConversationOrchestrator(SentientService):
                 if intent:
                     category, command = intent
                     self.logger.info(f"System tool detected: {category}/{command}")
-                    tool_output = await self.system_tools.execute(category, command, user_text)
+                    tool_output = await self.system_tools.execute(category, command, user_text, user_id=user_id)
                     tool_context = self.system_tools.format_for_prompt(
                         f"{category}/{command}", tool_output
                     )
