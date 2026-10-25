@@ -265,11 +265,11 @@ class SystemTools:
             "set_reminder": [r"remind\s+me\b", r"set.*reminder", r"set.*timer", r"alert.*me.*in\b",
                              r"notify.*me.*in\b", r"wake.*me.*in\b", r"in\s+\d+\s*(min|hour|sec)",
                              r"remind.*at\s+\d", r"timer\s+for\b"],
+            "cancel_reminder": [r"cancel.*reminder", r"delete.*reminder", r"remove.*reminder",
+                                r"clear.*reminder", r"stop.*reminder"],
             "list_reminders": [r"list.*reminder", r"show.*reminder", r"my.*reminder",
                                r"what.*remind", r"pending.*reminder", r"active.*reminder",
                                r"upcoming.*reminder"],
-            "cancel_reminder": [r"cancel.*reminder", r"delete.*reminder", r"remove.*reminder",
-                                r"clear.*reminder", r"stop.*reminder"],
         },
         "weather": {
             "current_weather": [r"\bweather\b", r"temperature.*outside", r"how.*cold", r"how.*hot",
@@ -281,11 +281,12 @@ class SystemTools:
             "memory": [r"check.*memory", r"free.*memory", r"how much.*memory",
                        r"\bram\b", r"memory.*usage"],
             "disk": [r"\bdisk\b", r"disk space", r"storage", r"how much.*space"],
+            "temperature": [r"\btemperature\b", r"\btemp\b", r"how hot", r"thermal"],
             "cpu_info": [r"cpu\s*(info|load|usage)", r"processor", r"load average",
                          r"\bcpu\b"],
             "gpu_status": [r"gpu\s*(status|info|load|temp)", r"graphics", r"tegra",
                            r"\bgpu\b"],
-            "temperature": [r"\btemperature\b", r"\btemp\b", r"how hot", r"thermal"],
+
         },
     }
 
