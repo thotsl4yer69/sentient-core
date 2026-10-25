@@ -125,6 +125,9 @@ class SystemTools:
             "dmesg": ["dmesg", "--time-format=reltime", "-n", "err"],
         },
 
+        # --- Discoverable Skills ---
+        "skills": {"catalog": None},
+
         # --- Deterministic Local Clock ---
         "clock": {"current": None},
 
@@ -153,12 +156,17 @@ class SystemTools:
     #      process before system_info (both match "cpu"/"memory"),
     #      self_awareness before ollama (both match "model").
     INTENT_PATTERNS = {
+        "skills": {"catalog": [r"^(?:hey jarvis[, ]+)?(?:what can you do|list (?:your )?skills|show (?:your )?skills|what are your capabilities)[?.! ]*$"]},
         # --- Deterministic clock for voice turns: anchor to avoid false matches ---
         "clock": {
             "current": [r"^(?:hey jarvis[, ]+)?(?:what(?:\u0027s| is) the time(?: now)?|what time is it(?: now)?|tell me the time|current time|time please|what(?:\u0027s| is) the date(?: today)?|what day is it(?: today)?|today(?:\u0027s| is) date)[?.! ]*$"],
         },
         "home_assistant": {
             "handle": [r"\bhome assistant\b",
+                       r"^(?:hey jarvis[, ]+)?(?:set|make|change|turn)\s+.+?\b(?:lights?|lamps?)\b.+?\b(?:violet|purple|blue|red|green|yellow|orange|pink|white|cyan|magenta|indigo)\b",
+                       r"^(?:hey jarvis[, ]+)?(?:play|start)\s+.+\s+on\s+(?:the\s+)?(?:tv|television|speaker|.+)",
+                       r"^(?:hey jarvis[, ]+)?(?:make|set|dim)\s+it\s+(?:to\s+)?\d{1,3}\s*(?:percent|%)",
+                       r"^(?:hey jarvis[, ]+)?(?:dim|brighten|set)\s+.+\b(?:\d{1,3}\s*(?:percent|%))",
                        r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+(?:on|off)\s+",
                        r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+.+\s+(?:on|off)$",
                        r"^(?:hey jarvis[, ]+)?(?:set|make|change|turn)\s+.+\s+(?:to\s+)?(?:violet|purple|blue|red|green|yellow|orange|pink|white|cyan|magenta|indigo)$",
@@ -441,7 +449,7 @@ class SystemTools:
     # EXECUTION
     # =================================================================
 
-    async def execute(self, category: str, command: str, user_message: str = "") -> str:
+    async def execute(self, category: str, command: str, user_message: str = "", user_id: str = "voice_user") -> str:
         """Execute a system tool command."""
 
         # --- Combined / multi-command handlers ---
@@ -453,8 +461,9 @@ class SystemTools:
 
         # --- Special handlers ---
         handlers = {
+            ("skills", "catalog"): lambda: self._get_skill_catalog(),
             ("clock", "current"): lambda: self._get_local_clock(user_message),
-            ("home_assistant", "handle"): lambda: HomeAssistantSkill().execute(user_message),
+            ("home_assistant", "handle"): lambda: HomeAssistantSkill().execute(user_message, user_id=user_id),
             ("system_info", "gpu_status"): lambda: self._get_gpu_info(),
             ("system_info", "temperature"): lambda: self._get_temperatures(),
             ("network", "wifi_info"): lambda: self._get_wifi_info(),
@@ -501,6 +510,24 @@ class SystemTools:
             return "Command not available."
 
         return await self._run_command(cmd_template)
+
+    async def _get_skill_catalog(self) -> str:
+        """Describe implemented skills without claiming unavailable integrations."""
+        ha_ready = bool(
+            os.environ.get("SENTIENT_HOME_ASSISTANT_URL")
+            and os.environ.get("SENTIENT_HOME_ASSISTANT_TOKEN")
+        )
+        ha_state = "configured" if ha_ready else "requires Home Assistant connection"
+        return (
+            "Available skills: conversational AI; local time/date; service, "
+            "CPU, GPU and memory diagnostics; memory search and reminders; "
+            "avatar expressions; network status; local model information. "
+            "Home Assistant (" + ha_state + "): discover devices, lights, "
+            "switches, color/brightness, media pause/resume, scenes, scripts "
+            "and sequential compound commands. Alexa actions require a "
+            "supported Home Assistant integration or exposed routine; "
+            "direct arbitrary Alexa commands are not connected."
+        )
 
     async def _get_local_clock(self, utterance: str = "") -> str:
         """Return clock facts directly from the OS, never from an LLM guess."""
