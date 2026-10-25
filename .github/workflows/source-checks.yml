@@ -21,6 +21,6 @@ jobs:
       - name: Compile Python source without importing device services
         run: python -m compileall -q sentient services tools tests
       - name: Install isolated test runner
-        run: python -m pip install pytest
+        run: python -m pip install pytest numpy
       - name: Validate AIRI package and voice reliability
         run: python -m pytest -q tests/unit
