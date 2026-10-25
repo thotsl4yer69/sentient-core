@@ -143,6 +143,7 @@ class ConversationOrchestrator(SentientService):
 
         # Conversation history per user (for LLM context)
         self.conversation_histories: Dict[str, List[Dict[str, str]]] = {}
+        self._user_turn_locks: Dict[str, asyncio.Lock] = {}
 
         # Circuit breaker state: tracks consecutive failures per service
         self._circuit_failures: Dict[str, int] = {
@@ -1438,12 +1439,16 @@ class ConversationOrchestrator(SentientService):
             self.logger.warning("Received empty chat message")
             return
 
-        await self.process_input(
-            user_text=user_text,
-            user_id=user_id,
-            source=InputSource.TEXT_CHAT,
-            voice_mode=False
-        )
+        # Bounded MQTT dispatch permits parallel users; do not interleave
+        # mutations of conversation history from the same user.
+        lock = self._user_turn_locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            await self.process_input(
+                user_text=user_text,
+                user_id=user_id,
+                source=InputSource.TEXT_CHAT,
+                voice_mode=False
+            )
 
     async def handle_wake_word(self, message: Dict[str, Any]):
         """Handle wake word detection"""
@@ -1478,14 +1483,16 @@ class ConversationOrchestrator(SentientService):
 
         self.logger.info(f"Voice transcription (confidence: {confidence:.2f}): {user_text}")
 
-        await self.process_input(
-            user_text=user_text,
-            user_id=user_id,
-            source=InputSource.VOICE_TRANSCRIPTION,
-            voice_mode=True,
-            wake_word_triggered=(self.state == ConversationState.VOICE_MODE),
-            turn_id=message.get("turn_id")
-        )
+        lock = self._user_turn_locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            await self.process_input(
+                user_text=user_text,
+                user_id=user_id,
+                source=InputSource.VOICE_TRANSCRIPTION,
+                voice_mode=True,
+                wake_word_triggered=(self.state == ConversationState.VOICE_MODE),
+                turn_id=message.get("turn_id")
+            )
 
     async def handle_tts_control(self, message: dict):
         """Handle TTS toggle control from web UI or other sources"""
