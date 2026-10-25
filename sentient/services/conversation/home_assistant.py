@@ -7,9 +7,12 @@ import asyncio
 import json
 import os
 import re
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+
+_RECENT_ENTITIES = {}  # (user, entity) -> (domain, entity_id, last_seen_monotonic)
 
 COLORS = (
     "violet", "purple", "blue", "red", "green", "yellow",
@@ -121,14 +124,46 @@ class HomeAssistantSkill:
         _, error = await self.request(f"/api/services/{domain}/{action}", payload)
         if error:
             return error
+        if getattr(self, "_active_user", None) and domain in {"light", "switch", "media_player"}:
+            _RECENT_ENTITIES[self._active_user] = (domain, entity, time.monotonic())
         return f"Done: {action.replace('_', ' ')} — {self._describe(match)}."
 
-    async def execute(self, utterance):
+    async def execute(self, utterance, user_id="voice_user"):
+        self._active_user = user_id
         text = re.sub(r"^\s*(?:hey\s+jarvis[,.]?\s+)", "",
                       utterance.strip(), flags=re.IGNORECASE).lower().strip(" .!?")
         states, error = await self._states()
         if error:
             return error
+        # Compound instructions are executed sequentially and reported per step;
+        # ambiguity halts before any remaining actions run.
+        clauses = re.split(r"\s+and\s+", text, maxsplit=3)
+        if len(clauses) > 1:
+            outcomes = []
+            for clause in clauses:
+                outcome = await self._execute_one(states, clause)
+                outcomes.append(outcome)
+                if outcome.startswith(("Which ", "I can't", "That ", "Home Assistant ", "I can ")):
+                    break
+            return " ".join(outcomes)
+        return await self._execute_one(states, text)
+
+    async def _execute_one(self, states, text):
+        # Anaphora is scoped to a user and expires after ten minutes.
+        followup = re.fullmatch(r"(?:make|set|dim)\s+it\s+(?:to\s+)?(\d{1,3})\s*(?:percent|%)", text)
+        if followup:
+            recent = _RECENT_ENTITIES.get(getattr(self, "_active_user", ""), None)
+            if not recent or time.monotonic() - recent[2] > 600 or recent[0] != "light":
+                return "Which light do you mean?"
+            level = int(followup.group(1))
+            if not 0 <= level <= 100:
+                return "Brightness must be between zero and 100 percent."
+            domain, entity, _ = recent
+            current = next((x for x in states if x.get("entity_id") == entity), None)
+            if current is None:
+                return "I can't find that light in Home Assistant anymore."
+            return await self._perform(states, domain, entity.split(".", 1)[1],
+                                       "turn_on", {"brightness_pct": level})
 
         if re.search(r"\b(?:list|show|which|what|available)\b", text) and re.search(
             r"\b(?:light|lights|switch|switches|speaker|speakers|tv|devices|entities|scenes|scripts)\b",
@@ -183,6 +218,37 @@ class HomeAssistantSkill:
         if match:
             return await self._perform(states, match.group(1),
                                        match.group(2), "turn_on")
+
+        # Named content must be resolved to a *real* HA script or scene;
+        # "play X on TV" must not silently resume unrelated media.
+        named = re.fullmatch(r"(?:play|start)\s+(.+?)\s+on\s+(?:the\s+)?(.+)", text)
+        if named:
+            title, destination = named.groups()
+            for domain in ("script", "scene"):
+                chosen, matches = match_entity(states, domain, title)
+                if chosen is not None:
+                    result = await self._perform(states, domain, title, "turn_on")
+                    if result.startswith("Done:"):
+                        return result + (
+                            " The selected playback device is controlled by that "
+                            "Home Assistant routine, not confirmed by this command."
+                        )
+                    return result
+                if matches:
+                    return "Which routine? " + ", ".join(self._describe(x) for x in matches[:5])
+            return ("I can't find a Home Assistant script or scene called "
+                    + title + " for " + destination + ". No playback was started.")
+
+        brightness = re.fullmatch(
+            r"(?:set|dim|brighten)\s+(.+?)\s+(?:to\s+)?(\d{1,3})\s*(?:percent|%)", text
+        )
+        if brightness:
+            target, level = brightness.groups()
+            value = int(level)
+            if not 0 <= value <= 100:
+                return "Brightness must be between zero and 100 percent."
+            return await self._perform(states, "light", target, "turn_on",
+                                       {"brightness_pct": value})
 
         match = re.fullmatch(
             r"(pause|resume|stop|play)\s+(?:the\s+)?(?:music|media|playback)?\s*(?:on\s+)?(.*)", text
