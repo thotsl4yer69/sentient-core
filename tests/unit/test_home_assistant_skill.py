@@ -122,3 +122,58 @@ def test_smart_home_intent_routes_without_room_names():
     assert tools.detect_intent("run script sleep music") == (
         "home_assistant", "handle"
     )
+
+
+def test_compound_command_executes_both_verified_actions():
+    ha = FakeHA()
+    result = run(ha.execute("make study light violet and play sleep music on the tv", user_id="compound_user"))
+    assert result.count("Done:") == 2
+    assert ha.calls[1] == (
+        "/api/services/light/turn_on",
+        {"entity_id": "light.study", "color_name": "violet"},
+    )
+    assert ha.calls[2] == (
+        "/api/services/script/turn_on",
+        {"entity_id": "script.sleep_music"},
+    )
+    assert "not confirmed" in result
+
+
+def test_compound_command_stops_when_first_step_is_ambiguous():
+    ha = FakeHA()
+    result = run(ha.execute("turn bedroom lights violet and run script sleep music"))
+    assert "Which light" in result
+    assert ha.calls == [("/api/states", None)]
+
+
+def test_brightness_followup_uses_previous_entity_but_only_for_same_user():
+    ha = FakeHA()
+    run(ha.execute("make study light violet", user_id="brightness_user"))
+    next_request = FakeHA()
+    result = run(next_request.execute("make it to 30 percent", user_id="brightness_user"))
+    assert result.startswith("Done:")
+    assert next_request.calls[-1] == (
+        "/api/services/light/turn_on",
+        {"entity_id": "light.study", "brightness_pct": 30},
+    )
+    other = FakeHA()
+    assert "Which light" in run(other.execute("make it to 30 percent", user_id="other_user"))
+    assert other.calls == [("/api/states", None)]
+
+
+def test_nonspecified_music_does_not_fake_start():
+    ha = FakeHA()
+    result = run(ha.execute("play nonexistent music on the tv"))
+    assert "No playback was started" in result
+    assert ha.calls == [("/api/states", None)]
+
+
+def test_skill_registry_reports_configuration():
+    skills = SystemTools()
+    assert skills.detect_intent("what can you do") == ("skills", "catalog")
+    assert skills.detect_intent("make study light violet and play sleep music on the tv") == (
+        "home_assistant", "handle"
+    )
+    assert skills.detect_intent("make it to 30 percent") == ("home_assistant", "handle")
+    summary = run(skills.execute("skills", "catalog"))
+    assert "Available skills" in summary and "Alexa" in summary
