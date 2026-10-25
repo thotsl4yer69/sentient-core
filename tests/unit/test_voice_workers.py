@@ -131,3 +131,46 @@ def test_worker_fails_closed_without_voice_model():
     worker.voice_model = "/not/a/voice/model.onnx"
     with pytest.raises(RuntimeError):
         run(worker.setup())
+
+
+def test_cancelled_turn_cannot_play_late_llm_speech():
+    worker = PiperTTSWorker()
+    commands = []
+    emitted = []
+
+    async def fake_run(cmd, stdin=None):
+        commands.append(cmd)
+
+    async def publish(topic, payload):
+        emitted.append((topic, payload))
+
+    worker._run_speech_process = fake_run
+    worker.mqtt_publish = publish
+
+    async def scenario():
+        await worker.stop("timed-out-voice")
+        await worker.speak({"text": "An obsolete answer", "turn_id": "timed-out-voice"})
+
+    run(scenario())
+    assert not commands
+    assert emitted == [(
+        mqtt_topics.TTS_COMPLETED,
+        {"id": emitted[0][1]["id"], "turn_id": "timed-out-voice",
+         "status": "cancelled", "source": "piper_tts"}
+    )]
+
+
+def test_stopping_old_turn_does_not_interrupt_current_audio():
+    worker = PiperTTSWorker()
+    worker._active_turn_id = "new"
+    class Process:
+        returncode = None
+        terminated = False
+        def terminate(self):
+            self.terminated = True
+    proc = Process()
+    worker._active_process = proc
+    run(worker.stop("old"))
+    assert not proc.terminated
+    assert not worker._cancel_requested
+    assert "old" in worker._blocked_turn_ids
