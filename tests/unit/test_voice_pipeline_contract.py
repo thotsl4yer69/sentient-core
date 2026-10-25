@@ -53,6 +53,8 @@ def test_stt_routes_into_conversation_orchestrator_topic(pipeline):
 
 
 def test_stt_output_is_forwarded_once(pipeline):
+    pipeline._turn_active = True
+    pipeline._turn_id = "active-1"
     async def scenario():
         await pipeline._handle_stt_output({
             "text": "what time is it",
@@ -93,3 +95,30 @@ def test_matching_tts_completion_rearms(pipeline):
     asyncio.run(pipeline._handle_tts_completed({"id": "abc"}))
     assert not pipeline._turn_active
     assert not pipeline.is_cortana_speaking
+
+
+def test_stale_stt_output_does_not_create_new_conversation(pipeline):
+    pipeline._send_to_conversation = AsyncMock()
+    asyncio.run(pipeline._handle_stt_output({
+        "text": "ignore this delayed speech", "turn_id": "expired"
+    }))
+    pipeline._send_to_conversation.assert_not_awaited()
+
+
+def test_expired_turn_id_is_ignored_while_new_turn_is_active(pipeline):
+    pipeline._turn_active = True
+    pipeline._turn_id = "new-1"
+    pipeline._send_to_conversation = AsyncMock()
+    asyncio.run(pipeline._handle_stt_output({
+        "text": "old instruction", "turn_id": "old-1"
+    }))
+    pipeline._send_to_conversation.assert_not_awaited()
+
+
+def test_missing_completion_event_rearms_through_watchdog(pipeline):
+    pipeline._turn_active = True
+    pipeline._turn_id = "timeout-1"
+    pipeline._turn_timeout_seconds = 0.001
+    asyncio.run(pipeline._turn_watchdog("timeout-1"))
+    assert not pipeline._turn_active
+    assert pipeline._turn_id is None
