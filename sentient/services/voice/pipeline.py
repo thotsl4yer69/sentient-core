@@ -83,8 +83,9 @@ class VoicePipeline(SentientService):
         self._turn_started_monotonic: float = 0.0
         self._turn_id: Optional[str] = None
         self._turn_timeout_task: Optional[asyncio.Task] = None
-        self._turn_timeout_seconds = max(
-            15.0, float(os.environ.get("SENTIENT_VOICE_TURN_TIMEOUT", "190"))
+        # Keep the turn deadline below the wake detector's 90s fail-safe.
+        self._turn_timeout_seconds = min(
+            85.0, max(15.0, float(os.environ.get("SENTIENT_VOICE_TURN_TIMEOUT", "75")))
         )
 
         # Audio buffer for current recording
@@ -155,6 +156,11 @@ class VoicePipeline(SentientService):
             await asyncio.sleep(self._turn_timeout_seconds)
             if self._turn_active and self._turn_id == turn_id:
                 self.logger.error("Voice turn %s timed out; rearming", turn_id)
+                # Tell Piper not to play this turn even if the model produces
+                # a delayed response after we have returned to standby.
+                await self.mqtt_publish(mqtt_topics.TTS_STOP, {
+                    "turn_id": turn_id, "reason": "turn_timeout",
+                })
                 await self._finish_turn(turn_id, reason="timeout")
         except asyncio.CancelledError:
             pass
