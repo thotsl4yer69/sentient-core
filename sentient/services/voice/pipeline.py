@@ -394,7 +394,10 @@ class VoicePipeline(SentientService):
             await self._finish_turn(self._turn_id, "no_audio")
 
     async def _handle_stt_output(self, payload: dict):
-        """Handle STT transcription result."""
+        """Handle STT transcription result only for the active voice turn."""
+        if not self._turn_active:
+            self.logger.debug("Ignoring STT output with no active voice turn")
+            return
         if (payload.get("turn_id") and self._turn_id
                 and payload["turn_id"] != self._turn_id):
             self.logger.warning("Ignoring late STT output for different voice turn")
