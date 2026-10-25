@@ -7,6 +7,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -23,6 +24,8 @@ class PiperTTSWorker(SentientService):
         self._play_lock = asyncio.Lock()
         self._active_process = None
         self._cancel_requested = False
+        self._active_turn_id = None
+        self._blocked_turn_ids = {}
 
         @self.on_mqtt(mqtt_topics.TTS_SPEAK)
         async def speak(topic, payload):
@@ -31,7 +34,12 @@ class PiperTTSWorker(SentientService):
 
         @self.on_mqtt(mqtt_topics.TTS_STOP)
         async def stop(topic, payload):
-            await self.stop()
+            import json
+            try:
+                data = json.loads(payload.decode("utf-8"))
+            except (ValueError, AttributeError):
+                data = {}
+            await self.stop(data.get("turn_id"))
 
     async def setup(self):
         if not self.voice_model or not Path(self.voice_model).is_file():
@@ -42,7 +50,16 @@ class PiperTTSWorker(SentientService):
             raise RuntimeError("Audio player executable not found")
         self.logger.info("Local Piper speech ready")
 
-    async def stop(self):
+    async def stop(self, turn_id=None):
+        if turn_id:
+            self._blocked_turn_ids[turn_id] = time.monotonic()
+            # Bound old cancellation IDs; don't grow memory without limit.
+            if len(self._blocked_turn_ids) > 128:
+                oldest = min(self._blocked_turn_ids,
+                             key=self._blocked_turn_ids.get)
+                self._blocked_turn_ids.pop(oldest, None)
+        if turn_id and self._active_turn_id != turn_id:
+            return
         self._cancel_requested = True
         proc = self._active_process
         if proc is not None and proc.returncode is None:
@@ -78,6 +95,13 @@ class PiperTTSWorker(SentientService):
         turn_id = request.get("turn_id")
         tts_id = uuid.uuid4().hex
         async with self._play_lock:
+            if turn_id and turn_id in self._blocked_turn_ids:
+                await self.mqtt_publish(mqtt_topics.TTS_COMPLETED, {
+                    "id": tts_id, "turn_id": turn_id,
+                    "status": "cancelled", "source": "piper_tts",
+                })
+                return
+            self._active_turn_id = turn_id
             self._cancel_requested = False
             status = "completed"
             with tempfile.TemporaryDirectory(prefix="airi-tts-") as folder:
@@ -105,6 +129,7 @@ class PiperTTSWorker(SentientService):
                     status = "error"
                     self.logger.error("TTS failure for %s: %s", turn_id, exc)
                 finally:
+                    self._active_turn_id = None
                     await self.mqtt_publish(mqtt_topics.TTS_COMPLETED, {
                         "id": tts_id, "turn_id": turn_id,
                         "status": status, "source": "piper_tts",
