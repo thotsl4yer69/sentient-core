@@ -45,6 +45,8 @@ class SentientService:
         self._tasks: List[asyncio.Task] = []
         self._mqtt_handlers: Dict[str, Callable] = {}
         self._app: Optional[Any] = None  # FastAPI app
+        self._inflight: set = set()
+        self._max_inflight = 8
 
     # --- MQTT ---
 
@@ -66,52 +68,86 @@ class SentientService:
             payload = payload.encode()
         await self._mqtt_client.publish(topic, payload)
 
+    async def _dispatch_message(self, topic_str: str, payload: bytes):
+        """Dispatch one event; a slow handler must not block the MQTT reader."""
+        for pattern, handler in self._mqtt_handlers.items():
+            if topic_str == pattern or _topic_matches(topic_str, pattern):
+                try:
+                    await handler(topic_str, payload)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self.logger.error(
+                        "Handler error for %s: %s", topic_str, exc,
+                        exc_info=True
+                    )
+
     async def _mqtt_loop(self):
-        """Main MQTT connection loop with auto-reconnect and exponential backoff."""
+        """Reconnect while processing MQTT events with bounded concurrency.
+
+        A speech-recording or LLM handler may take several seconds. Awaiting
+        it inside the MQTT read loop starves TTS_STOP, STT_OUTPUT and follow-up
+        events. A semaphore caps active jobs without silently losing events.
+        """
         cfg = self.config.mqtt
-        reconnect_delay = 1  # Start at 1 second
-        max_delay = 60  # Cap at 60 seconds
-        while self._running:
-            try:
-                async with MQTTClient(
-                    hostname=cfg.broker,
-                    port=cfg.port,
-                    username=cfg.username or None,
-                    password=cfg.password or None,
-                    identifier=f"sentient-{self.name}",
-                ) as client:
-                    self._mqtt_client = client
-                    self.logger.info(f"MQTT connected to {cfg.broker}:{cfg.port}")
-                    reconnect_delay = 1  # Reset on successful connection
+        reconnect_delay = 1
+        max_delay = 60
+        slots = asyncio.Semaphore(self._max_inflight)
+        try:
+            while self._running:
+                try:
+                    async with MQTTClient(
+                        hostname=cfg.broker,
+                        port=cfg.port,
+                        username=cfg.username or None,
+                        password=cfg.password or None,
+                        identifier=f"sentient-{self.name}",
+                    ) as client:
+                        self._mqtt_client = client
+                        self.logger.info("MQTT connected to %s:%s", cfg.broker, cfg.port)
+                        reconnect_delay = 1
+                        for topic in self._mqtt_handlers:
+                            await client.subscribe(topic)
+                        async for message in client.messages:
+                            await slots.acquire()
+                            # Copy bytes before advancing the MQTT iterator.
+                            topic_str = str(message.topic)
+                            payload = bytes(message.payload)
+                            task = asyncio.create_task(
+                                self._dispatch_message(topic_str, payload)
+                            )
+                            self._inflight.add(task)
 
-                    # Subscribe to all registered topics
-                    for topic in self._mqtt_handlers:
-                        await client.subscribe(topic)
-                        self.logger.debug(f"Subscribed to {topic}")
+                            def completed(done):
+                                self._inflight.discard(done)
+                                slots.release()
 
-                    # Message dispatch loop
-                    async for message in client.messages:
-                        topic_str = str(message.topic)
-                        for pattern, handler in self._mqtt_handlers.items():
-                            # Simple topic matching (exact or wildcard)
-                            if topic_str == pattern or _topic_matches(topic_str, pattern):
-                                try:
-                                    await handler(topic_str, message.payload)
-                                except Exception as e:
-                                    self.logger.error(f"Handler error for {topic_str}: {e}", exc_info=True)
-
-            except MqttError as e:
-                self._mqtt_client = None
-                if self._running:
-                    self.logger.warning(f"MQTT disconnected: {e}, reconnecting in {reconnect_delay}s...")
-                    await asyncio.sleep(reconnect_delay)
-                    reconnect_delay = min(reconnect_delay * 2, max_delay)
-            except Exception as e:
-                self._mqtt_client = None
-                if self._running:
-                    self.logger.error(f"MQTT error: {e}, reconnecting in {reconnect_delay}s...", exc_info=True)
-                    await asyncio.sleep(reconnect_delay)
-                    reconnect_delay = min(reconnect_delay * 2, max_delay)
+                            task.add_done_callback(completed)
+                except asyncio.CancelledError:
+                    raise
+                except MqttError as exc:
+                    if self._running:
+                        self.logger.warning(
+                            "MQTT disconnected: %s; reconnecting in %ss",
+                            exc, reconnect_delay
+                        )
+                        await asyncio.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, max_delay)
+                except Exception as exc:
+                    if self._running:
+                        self.logger.error(
+                            "MQTT error: %s; reconnecting in %ss",
+                            exc, reconnect_delay, exc_info=True
+                        )
+                        await asyncio.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, max_delay)
+                finally:
+                    self._mqtt_client = None
+        finally:
+            for task in tuple(self._inflight):
+                task.cancel()
+            if self._inflight:
+                await asyncio.gather(*tuple(self._inflight), return_exceptions=True)
 
     # --- HTTP ---
 
