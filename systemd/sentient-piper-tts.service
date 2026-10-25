@@ -7,10 +7,11 @@ PartOf=sentient-core.target
 Type=simple
 User=cortana
 Group=cortana
-WorkingDirectory=/home/cortana/sentient-core
+WorkingDirectory=/opt/sentient-core
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/sentient-core
 EnvironmentFile=-/opt/sentient-core/config/sentient.env
-ExecStart=/usr/bin/python3 /home/cortana/sentient-core/services/piper_tts.py
+ExecStart=/usr/bin/python3 -m sentient.services.voice.tts_worker
 Restart=always
 RestartSec=10
 MemoryMax=1G
