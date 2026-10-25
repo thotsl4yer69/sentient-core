@@ -1,9 +1,17 @@
-"""Voice services for Sentient Core.
+"""Sentient voice modules.
 
-Provides wake word detection and the full voice interaction pipeline.
+Avoid importing GPU/wake/mic dependencies for lightweight STT/TTS workers
+and deterministic skill tests.
 """
 
-from sentient.services.voice.wake_word import WakeWordService
-from sentient.services.voice.pipeline import VoicePipeline
-
 __all__ = ["WakeWordService", "VoicePipeline"]
+
+
+def __getattr__(name):
+    if name == "WakeWordService":
+        from .wake_word import WakeWordService
+        return WakeWordService
+    if name == "VoicePipeline":
+        from .pipeline import VoicePipeline
+        return VoicePipeline
+    raise AttributeError(name)
