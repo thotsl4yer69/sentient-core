@@ -7,11 +7,12 @@ PartOf=sentient-core.target
 Type=simple
 User=cortana
 Group=cortana
-WorkingDirectory=/home/cortana/sentient-core
+WorkingDirectory=/opt/sentient-core
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/sentient-core
 Environment=CUDA_VISIBLE_DEVICES=0
 EnvironmentFile=-/opt/sentient-core/config/sentient.env
-ExecStart=/home/cortana/sentient-core/.venv/bin/python3 /home/cortana/sentient-core/services/whisper_stt_server.py
+ExecStart=/usr/bin/python3 -m sentient.services.voice.stt_worker
 Restart=always
 RestartSec=10
 MemoryMax=3G
