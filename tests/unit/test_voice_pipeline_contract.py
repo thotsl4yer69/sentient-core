@@ -122,3 +122,25 @@ def test_missing_completion_event_rearms_through_watchdog(pipeline):
     asyncio.run(pipeline._turn_watchdog("timeout-1"))
     assert not pipeline._turn_active
     assert pipeline._turn_id is None
+
+
+def test_synthesis_failure_before_tts_started_rearms_instead_of_hanging(pipeline):
+    pipeline._turn_id = "failed-tts"
+    pipeline._turn_active = True
+    pipeline.current_tts_id = None
+    asyncio.run(pipeline._handle_tts_completed({
+        "turn_id": "failed-tts", "id": "tts-22", "status": "error"
+    }))
+    assert not pipeline._turn_active
+    assert pipeline._turn_id is None
+
+
+def test_old_tts_completion_cannot_finish_new_voice_turn(pipeline):
+    pipeline._turn_id = "new-turn"
+    pipeline._turn_active = True
+    pipeline.current_tts_id = "new-audio"
+    asyncio.run(pipeline._handle_tts_completed({
+        "turn_id": "old-turn", "id": "old-audio", "status": "completed"
+    }))
+    assert pipeline._turn_active
+    assert pipeline._turn_id == "new-turn"
