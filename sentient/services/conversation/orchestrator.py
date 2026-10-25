@@ -499,22 +499,17 @@ class ConversationOrchestrator(SentientService):
             self.logger.error(f"Failed to retrieve world state: {e}")
             return {}
 
-    # Compiled regex patterns for deep contemplation detection
+    # Multiple LLM calls are prohibitively slow on a small Jetson model.
+    # Deep contemplation now requires explicit user intent instead of
+    # ordinary emotional/support questions (which remain fast but empathic).
     _DEEP_PATTERNS = re.compile(
-        r"i(?:'m| am) (?:stressed|worried|sad|lonely|scared|struggling)|"
-        r"i feel\b|"
-        r"how should i\b|what should i do\b|am i doing the right|"
-        r"what do you think about\b|i need advice\b|help me understand\b|"
-        r"meaning of\b|what is consciousness\b|do you think\b|"
-        r"what'?s the point\b|why do we\b|purpose of life\b|what matters\b|"
-        r"tell me about yourself\b|what do you really think\b|"
-        r"be honest with me\b|your honest opinion\b|what are you feeling\b|"
-        r"do you care about me\b|are we friends\b|what am i to you\b|do you love\b",
-        re.IGNORECASE
+        r"\b(?:think deeply|deep contemplate|deep contemplation|"
+        r"take your time and think|full deep analysis|use deep mode)\b",
+        re.IGNORECASE,
     )
 
     def _should_deep_contemplate(self, user_text: str) -> bool:
-        """Return True if the query warrants full multi-voice contemplation."""
+        """Opt in to slower multi-perspective inference only when asked."""
         return bool(self._DEEP_PATTERNS.search(user_text))
 
     async def _generate_response(
