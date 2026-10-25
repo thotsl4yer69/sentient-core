@@ -467,7 +467,14 @@ class VoicePipeline(SentientService):
         tts_id = payload.get("id", "unknown")
         self.logger.info(f"TTS playback completed: {tts_id}")
 
-        if tts_id == self.current_tts_id:
+        linked_turn = payload.get("turn_id")
+        terminal_error = payload.get("status") in {"error", "cancelled"}
+        # A synthesis failure can emit COMPLETED without STARTED. A matching
+        # turn ID is enough to re-arm: never wait for the global watchdog.
+        if tts_id == self.current_tts_id or (
+            self._turn_active and linked_turn is not None
+            and linked_turn == self._turn_id and terminal_error
+        ):
             await self._finish_turn(self._turn_id, payload.get("status", "completed"))
 
     # --- SentientService lifecycle overrides ---
