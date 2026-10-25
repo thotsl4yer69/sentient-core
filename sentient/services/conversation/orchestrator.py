@@ -796,7 +796,8 @@ class ConversationOrchestrator(SentientService):
                 'user': context.user_id,
                 'timestamp': time.time(),
                 'conversation_id': context.conversation_id,
-                'turn': context.turn_number
+                'turn': context.turn_number,
+                'turn_id': (context.metadata or {}).get('turn_id')
             }
             if suggestions:
                 chat_payload['suggestions'] = suggestions
@@ -833,7 +834,8 @@ class ConversationOrchestrator(SentientService):
                     mqtt_topics.TTS_SPEAK,
                     {
                         'text': response.text,
-                        'emotion': response.emotion or 'neutral'
+                        'emotion': response.emotion or 'neutral',
+                        'turn_id': (context.metadata or {}).get('turn_id')
                     }
                 )
                 self.logger.debug("Published to TTS")
@@ -879,7 +881,8 @@ class ConversationOrchestrator(SentientService):
         user_id: str = "unknown",
         source: InputSource = InputSource.TEXT_CHAT,
         voice_mode: bool = False,
-        wake_word_triggered: bool = False
+        wake_word_triggered: bool = False,
+        turn_id: Optional[str] = None
     ):
         """
         Main conversation processing pipeline
@@ -919,7 +922,8 @@ class ConversationOrchestrator(SentientService):
                 conversation_id=conversation_id,
                 turn_number=self.conversation_counter,
                 voice_mode=voice_mode,
-                wake_word_triggered=wake_word_triggered
+                wake_word_triggered=wake_word_triggered,
+                metadata={"turn_id": turn_id} if turn_id else {}
             )
 
             self.logger.info(f"Processing input from {user_id} ({source.value}): {user_text}")
@@ -1484,7 +1488,8 @@ class ConversationOrchestrator(SentientService):
             user_id=user_id,
             source=InputSource.VOICE_TRANSCRIPTION,
             voice_mode=True,
-            wake_word_triggered=(self.state == ConversationState.VOICE_MODE)
+            wake_word_triggered=(self.state == ConversationState.VOICE_MODE),
+            turn_id=message.get("turn_id")
         )
 
     async def handle_tts_control(self, message: dict):
