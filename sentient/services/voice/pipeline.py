@@ -31,6 +31,7 @@ import json
 import os
 import tempfile
 import time
+import uuid
 import wave
 from datetime import datetime
 from typing import Optional
@@ -80,6 +81,11 @@ class VoicePipeline(SentientService):
         self.current_tts_id: Optional[str] = None
         self._turn_active: bool = False
         self._turn_started_monotonic: float = 0.0
+        self._turn_id: Optional[str] = None
+        self._turn_timeout_task: Optional[asyncio.Task] = None
+        self._turn_timeout_seconds = max(
+            15.0, float(os.environ.get("SENTIENT_VOICE_TURN_TIMEOUT", "190"))
+        )
 
         # Audio buffer for current recording
         self._audio_buffer: list = []
@@ -104,6 +110,14 @@ class VoicePipeline(SentientService):
                 self.logger.error(
                     f"Error handling STT output: {e}", exc_info=True
                 )
+
+        @self.on_mqtt(mqtt_topics.CHAT_OUTPUT)
+        async def handle_chat_output(topic: str, payload: bytes):
+            try:
+                data = json.loads(payload.decode("utf-8"))
+                await self._handle_persona_response(data)
+            except Exception as exc:
+                self.logger.error("Chat output handling failed: %s", exc, exc_info=True)
 
         @self.on_mqtt(mqtt_topics.PERSONA_RESPONSE)
         async def handle_persona_response(topic: str, payload: bytes):
@@ -134,6 +148,31 @@ class VoicePipeline(SentientService):
                 self.logger.error(
                     f"Error handling TTS completed: {e}", exc_info=True
                 )
+
+    async def _turn_watchdog(self, turn_id: str):
+        """Rearm even if a downstream component never publishes completion."""
+        try:
+            await asyncio.sleep(self._turn_timeout_seconds)
+            if self._turn_active and self._turn_id == turn_id:
+                self.logger.error("Voice turn %s timed out; rearming", turn_id)
+                await self._finish_turn(turn_id, reason="timeout")
+        except asyncio.CancelledError:
+            pass
+
+    async def _finish_turn(self, turn_id: Optional[str], reason="completed"):
+        if turn_id is not None and self._turn_id != turn_id:
+            return
+        if self._turn_timeout_task is not None:
+            task = self._turn_timeout_task
+            self._turn_timeout_task = None
+            if task is not asyncio.current_task():
+                task.cancel()
+        self._turn_active = False
+        self._turn_id = None
+        self.is_cortana_speaking = False
+        self.current_tts_id = None
+        self.logger.info("Voice turn ended: %s", reason)
+        await self._set_avatar_state("idle", {"reason": reason})
 
     # --- Avatar state management ---
 
@@ -277,6 +316,7 @@ class VoicePipeline(SentientService):
                 "channels": CHANNELS,
             },
             "source": "voice_pipeline",
+            "turn_id": self._turn_id,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -293,6 +333,7 @@ class VoicePipeline(SentientService):
             "source": "voice_pipeline",
             "user": "voice_user",
             "confidence": 1.0,
+            "turn_id": self._turn_id,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -317,6 +358,12 @@ class VoicePipeline(SentientService):
             return
         self._turn_active = True
         self._turn_started_monotonic = time.monotonic()
+        self._turn_id = uuid.uuid4().hex
+        if self._turn_timeout_task:
+            self._turn_timeout_task.cancel()
+        self._turn_timeout_task = asyncio.create_task(
+            self._turn_watchdog(self._turn_id)
+        )
 
         # Interrupt current TTS playback if speaking
         if self.is_cortana_speaking:
@@ -344,19 +391,21 @@ class VoicePipeline(SentientService):
             await self._send_to_stt(audio_bytes)
         else:
             self.logger.warning("No audio captured after wake word")
-            self._turn_active = False
-            await self._set_avatar_state("idle")
+            await self._finish_turn(self._turn_id, "no_audio")
 
     async def _handle_stt_output(self, payload: dict):
         """Handle STT transcription result."""
+        if (payload.get("turn_id") and self._turn_id
+                and payload["turn_id"] != self._turn_id):
+            self.logger.warning("Ignoring late STT output for different voice turn")
+            return
         text = payload.get("text", "").strip()
         language = payload.get("language", "unknown")
         confidence = payload.get("language_probability", 0.0)
 
         if not text:
             self.logger.warning("Empty transcription received")
-            self._turn_active = False
-            await self._set_avatar_state("idle")
+            await self._finish_turn(self._turn_id, "empty_stt")
             return
 
         self.logger.info(
@@ -368,13 +417,20 @@ class VoicePipeline(SentientService):
 
     async def _handle_persona_response(self, payload: dict):
         """Handle Cortana's response from the persona service."""
+        if (payload.get("turn_id") and self._turn_id
+                and payload["turn_id"] != self._turn_id):
+            return
+        # Ignore unrelated web chat replies while a voice turn is in flight.
+        if not self._turn_active or payload.get("user", "voice_user") not in (
+            "voice_user", "unknown"
+        ):
+            return
         text = payload.get("text", "").strip()
         emotion = payload.get("emotion", "neutral")
 
         if not text:
             self.logger.warning("Empty response from persona")
-            self._turn_active = False
-            await self._set_avatar_state("idle")
+            await self._finish_turn(self._turn_id, "empty_response")
             return
 
         self.logger.info(
@@ -390,6 +446,9 @@ class VoicePipeline(SentientService):
 
     async def _handle_tts_started(self, payload: dict):
         """Handle TTS playback started event."""
+        if (payload.get("turn_id") and self._turn_id
+                and payload["turn_id"] != self._turn_id):
+            return
         tts_id = payload.get("id", "unknown")
         self.current_tts_id = tts_id
         self.is_cortana_speaking = True
@@ -399,14 +458,14 @@ class VoicePipeline(SentientService):
 
     async def _handle_tts_completed(self, payload: dict):
         """Handle TTS playback completed event."""
+        if (payload.get("turn_id") and self._turn_id
+                and payload["turn_id"] != self._turn_id):
+            return
         tts_id = payload.get("id", "unknown")
         self.logger.info(f"TTS playback completed: {tts_id}")
 
         if tts_id == self.current_tts_id:
-            self._turn_active = False
-            self.is_cortana_speaking = False
-            self.current_tts_id = None
-            await self._set_avatar_state("idle")
+            await self._finish_turn(self._turn_id, payload.get("status", "completed"))
 
     # --- SentientService lifecycle overrides ---
 
@@ -460,6 +519,9 @@ class VoicePipeline(SentientService):
 
         self.is_recording = False
         self._turn_active = False
+        if self._turn_timeout_task:
+            self._turn_timeout_task.cancel()
+            self._turn_timeout_task = None
 
         if self.stream:
             try:
