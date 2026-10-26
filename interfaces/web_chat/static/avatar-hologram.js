@@ -292,7 +292,9 @@
             }
 
             // Thinking state from emotion
-            this.isThinking = (this.currentEmotion === 'thinking' || this.currentEmotion === 'analyzing' || this.currentEmotion === 'focused');
+            // Processing indicators follow real pipeline state, never a
+            // lingering emotion tag after the assistant has finished speaking.
+            this.isThinking = this.currentState === 'processing' && !this.isSpeaking;
 
             // --- BLINK ---
             if (!this.isBlinking) {
@@ -913,8 +915,9 @@
 
         getDiagnostics() {
             return {
-                modelLoaded: true,
+                modelLoaded: false, // procedural hologram, not a 3D GLB
                 renderer: 'Canvas2D',
+                avatarMode: 'procedural_hologram',
                 fps: this.fps,
                 currentEmotion: this.currentEmotion,
                 isSpeaking: this.isSpeaking,
