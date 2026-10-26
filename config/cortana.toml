@@ -27,7 +27,12 @@ server = "https://ntfy.sh"
 topic = "cortana-sentient-core"
 
 [wake_word]
-model = "hey_jarvis"
+# Desired phrase: Hey AIRI. A trained ONNX file is required to detect it.
+# Until that verified model exists, Jarvis remains as a safe fallback.
+model = "/opt/sentient-core/models/wake/hey_airi.onnx"
+phrase = "Hey AIRI"
+fallback_model = "hey_jarvis"
+fallback_phrase = "Hey Jarvis"
 sensitivity = 0.5
 
 [conversation]
