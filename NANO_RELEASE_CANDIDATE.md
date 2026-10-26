@@ -45,3 +45,38 @@ The GitHub Action `Sentient Core source and unit checks` compiles source and run
 - All actual actions report real success or error; no invented playback confirmations.
 - p50/p95 voice-to-first-audio, latency per stage and peak GPU/CPU/memory/temperature captured from Nano.
 - Failed-process restart and rollback tested without deleting working files/models.
+
+## Turn-by-turn latency diagnostics (source instrumentation, not a live measurement)
+
+The wake, VAD, STT, conversation/context, LLM-first-token, Piper
+synthesis and playback-request stages now emit `AIRI_TIMING` JSON log records
+with the same `turn_id` and host monotonic timestamp (nanoseconds).
+No audio, transcript, prompt or credentials appear in these records.
+
+On the **verified** Nano checkout, observe a small number of actual turns and
+capture a combined service journal (read-only):
+
+```bash
+journalctl --since "30 minutes ago" -o cat --no-pager \
+  -u sentient-voice -u sentient-whisper-stt \
+  -u sentient-conversation -u sentient-piper-tts \
+  | python3 tools/voice_latency_report.py
+```
+
+The report provides each turn's stage timeline and p50/p95 from wake received
+to the **playback request**. It separately shows context wait and Piper
+synthesis time when those markers exist. Report a timeout/missing stage as
+missing evidence rather than silently treating it as zero. TTS_STARTED is
+issued **before** the speaker player starts, so playback requested is a
+proxy—not actual first-audio-byte/speaker loopback latency. To measure
+acoustic first audio, use a loopback/microphone reference capture on the Nano.
+
+Do **not** change context length, CUDA layers, model quantisation or model
+server based on the old approximate 30-second number. First collect measured
+stages. Potential delays include 1.5-second end-of-utterance VAD, a 30-second
+memory-recall HTTP timeout, inference prefill/generation and Piper synthesis.
+Only tune the measured bottleneck and rerun the same utterance/recovery suite.
+
+The source now also rearms on a matching successful `TTS_COMPLETED` event
+even when the earlier `TTS_STARTED` event is dropped. This is covered by
+a regression test; it still needs physical second-turn validation.
