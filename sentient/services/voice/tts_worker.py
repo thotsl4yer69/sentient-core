@@ -14,6 +14,7 @@ from pathlib import Path
 from sentient.common import mqtt_topics
 from sentient.common.service_base import SentientService
 from sentient.common.voice_timing import voice_stage
+from sentient.services.voice.audio_envelope import wav_envelope
 
 
 class PiperTTSWorker(SentientService):
@@ -122,8 +123,11 @@ class PiperTTSWorker(SentientService):
                     else:
                         # This marks the player request, not first audible PCM sample.
                         voice_stage(self.logger, turn_id, "playback_requested")
+                        amplitude, duration = wav_envelope(wav_path)
                         await self.mqtt_publish(mqtt_topics.TTS_STARTED, {
                             "id": tts_id, "turn_id": turn_id, "source": "piper_tts",
+                            "envelope": amplitude,
+                            "duration": duration,
                         })
                         await self._run_speech_process(
                             (self.player_bin, wav_path)
