@@ -188,6 +188,9 @@ class AvatarBridgeService(SentientService):
         self._last_activity = time.time()
         self._last_emotion_publish = 0.0
         self._last_attention_publish = 0.0
+        self._tts_id: Optional[str] = None
+        self._tts_turn_id: Optional[str] = None
+        self._speaking_timeout: Optional[asyncio.Task] = None
 
         # -----------------------------------------------------------------
         # MQTT handlers (registered via base-class decorator)
@@ -204,6 +207,18 @@ class AvatarBridgeService(SentientService):
         @self.on_mqtt(mqtt_topics.AVATAR_THINKING)
         async def _handle_thinking(topic: str, payload: bytes):
             await self._handle_thinking_message(payload)
+
+        @self.on_mqtt(mqtt_topics.TTS_STARTED)
+        async def _handle_real_tts_start(topic: str, payload: bytes):
+            await self._handle_tts_started(payload)
+
+        @self.on_mqtt(mqtt_topics.TTS_COMPLETED)
+        async def _handle_real_tts_finish(topic: str, payload: bytes):
+            await self._handle_tts_completed(payload)
+
+        @self.on_mqtt(mqtt_topics.AVATAR_STATE)
+        async def _handle_voice_stage(topic: str, payload: bytes):
+            await self._handle_voice_state(payload)
 
         @self.on_mqtt(mqtt_topics.TTS_STATUS)
         async def _handle_tts(topic: str, payload: bytes):
@@ -444,15 +459,72 @@ class AvatarBridgeService(SentientService):
             data = json.loads(payload.decode())
 
             state_value = data.get("state", "")
-            if state_value == "responding":
-                await self.set_speaking(True)
-                if self.state.emotion == EmotionState.NEUTRAL:
-                    await self.update_emotion(EmotionState.HAPPY, intensity=0.6)
-                asyncio.create_task(self._auto_stop_speaking(delay=3.0))
-            elif state_value in ("idle", "listening"):
-                await self.set_speaking(False)
+            # A finished text response does not imply audible speech.
+            # Only Piper TTS_STARTED/TTS_COMPLETED control mouth movement.
+            if state_value in ("processing", "thinking"):
+                await self.set_thinking(True)
+            elif state_value == "idle":
+                await self.set_thinking(False)
         except Exception as e:
             self.logger.error(f"Error handling conversation message: {e}")
+
+    async def _handle_tts_started(self, payload: bytes):
+        """Only a real playback request may activate speaking."""
+        try:
+            event = json.loads(payload.decode())
+            self._tts_id = event.get("id")
+            self._tts_turn_id = event.get("turn_id")
+            if not self._tts_id:
+                return
+            if self._speaking_timeout is not None:
+                self._speaking_timeout.cancel()
+            await self.set_thinking(False)
+            await self.set_speaking(True)
+            duration = min(45.0, max(0.0, float(event.get("duration") or 0.0)))
+            # Fallback only; matching COMPLETE is the authoritative stop.
+            self._speaking_timeout = asyncio.create_task(
+                self._auto_stop_tts(self._tts_id, duration + 3)
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            self.logger.warning("Invalid TTS started event: %s", exc)
+
+    async def _auto_stop_tts(self, tts_id: str, delay: float):
+        try:
+            await asyncio.sleep(max(4.0, delay))
+            if self._tts_id == tts_id:
+                self._tts_id = None
+                self._tts_turn_id = None
+                await self.set_speaking(False)
+        except asyncio.CancelledError:
+            pass
+
+    async def _handle_tts_completed(self, payload: bytes):
+        try:
+            event = json.loads(payload.decode())
+            if event.get("id") != self._tts_id:
+                return
+            if self._tts_turn_id and event.get("turn_id") != self._tts_turn_id:
+                return
+            self._tts_id = None
+            self._tts_turn_id = None
+            if self._speaking_timeout is not None:
+                self._speaking_timeout.cancel()
+                self._speaking_timeout = None
+            await self.set_speaking(False)
+        except (ValueError, TypeError, AttributeError) as exc:
+            self.logger.warning("Invalid TTS complete event: %s", exc)
+
+    async def _handle_voice_state(self, payload: bytes):
+        try:
+            state = json.loads(payload.decode()).get("state")
+            if state in {"processing", "thinking"}:
+                await self.set_thinking(True)
+            elif state in {"idle", "error"}:
+                await self.set_thinking(False)
+                # Do not end speech without a TTS id: a different service
+                # could publish idle before the Piper playback completes.
+        except (ValueError, TypeError, AttributeError):
+            pass
 
     async def _handle_thinking_message(self, payload: bytes):
         """Handle thinking / deliberation state."""
