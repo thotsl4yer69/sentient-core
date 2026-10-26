@@ -38,5 +38,6 @@ def test_report_uses_monotonic_stages_and_survives_noise():
     assert data["turn_count"] == 1
     assert data["turns"]["a"]["context_wait_ms"] == 300.0
     assert data["turns"]["a"]["tts_synthesis_ms"] == 800.0
+    assert data["turns"]["a"]["largest_measured_stage"] == "tts_synthesis_ms"
     assert data["turns"]["a"]["wake_to_playback_request_ms"] == 2300.0
     assert data["summary"]["playback_requested"]["p95_ms"] == 2300.0
