@@ -80,6 +80,9 @@ def _apply_env_overrides(config: SentientConfig) -> SentientConfig:
 
         # Wake word overrides
         "SENTIENT_WAKE_WORD_MODEL": lambda v: setattr(config.wake_word, "model", v),
+        "SENTIENT_WAKE_WORD_PHRASE": lambda v: setattr(config.wake_word, "phrase", v),
+        "SENTIENT_WAKE_WORD_FALLBACK_MODEL": lambda v: setattr(config.wake_word, "fallback_model", v),
+        "SENTIENT_WAKE_WORD_FALLBACK_PHRASE": lambda v: setattr(config.wake_word, "fallback_phrase", v),
         "SENTIENT_WAKE_WORD_SENSITIVITY": lambda v: setattr(config.wake_word, "sensitivity", float(v)),
 
         # Conversation overrides
