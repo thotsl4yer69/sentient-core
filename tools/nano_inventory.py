@@ -19,6 +19,9 @@ SERVICES = (
     "sentient-memory", "sentient-memory-http", "sentient-perception",
     "sentient-avatar", "sentient-avatar-bridge", "sentient-web-chat",
     "mosquitto", "redis-server", "ollama",
+    # Earlier observed Nano installations can use a different unit topology.
+    # Read those units without assuming they match the candidate sentient-* services.
+    "coretana", "voice-companion",
 )
 
 
