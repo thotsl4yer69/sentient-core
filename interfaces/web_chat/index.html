@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CORTANA // SENTIENT CORE</title>
+  <title>AIRI // SENTIENT CORE</title>
 
   <!-- PWA -->
   <meta name="theme-color" content="#0a0e17" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="CORTANA" />
+  <meta name="apple-mobile-web-app-title" content="AIRI" />
   <link rel="manifest" href="/manifest.json" />
 
   <!-- Fonts -->
@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 
   <!-- App styles -->
-  <link rel="stylesheet" href="static/styles.css?v=11" />
+  <link rel="stylesheet" href="static/styles.css?v=12" />
 </head>
 <body>
 
@@ -29,7 +29,7 @@
 
 <header class="header">
   <div class="header-left">
-    <span class="logo">CORTANA</span>
+    <span class="logo">AIRI</span>
     <span class="logo-sub">v3.0</span>
   </div>
   <div class="header-center">
@@ -77,7 +77,7 @@
       <!-- Input area -->
       <div class="chat-input-area">
         <div class="input-wrapper">
-          <textarea id="message-input" placeholder="Message Cortana..." rows="1" maxlength="2000"></textarea>
+          <textarea id="message-input" placeholder="Message AIRI..." rows="1" maxlength="2000"></textarea>
           <span class="char-counter"><span id="char-count">0</span>/2000</span>
         </div>
         <div class="input-controls">
@@ -120,6 +120,21 @@
 
   <!-- ====== RIGHT COLUMN: SIDEBAR ====== -->
   <div class="sidebar">
+
+    <!-- AIRI LIVE AVATAR: a real state-driven surface rather than a hidden canvas -->
+    <section class="panel sidebar-avatar" id="panel-avatar" data-panel="avatar">
+      <div class="panel-header">
+        <span class="panel-title">AIRI // PRESENCE</span>
+        <span class="avatar-live-label" id="avatar-live-label" aria-live="polite">STANDBY</span>
+      </div>
+      <div class="panel-body panel-body-avatar" id="panel-avatar-body">
+        <canvas id="avatar-canvas" aria-label="AIRI animated holographic avatar" role="img"></canvas>
+        <div class="avatar-presence-footer" aria-hidden="true">
+          <span id="avatar-wake-phrase">WAKE: HEY AIRI (PENDING MODEL)</span>
+          <span id="avatar-voice-indicator">VOICE STANDBY</span>
+        </div>
+      </div>
+    </section>
 
     <!-- CAMERA FEED (compact vision) -->
     <section class="panel sidebar-vision" id="panel-vision" data-panel="vision">
@@ -175,11 +190,6 @@
   </div><!-- /.sidebar -->
 
   <!-- ====== HIDDEN PANELS (kept for JS module compat) ====== -->
-  <section class="panel" id="panel-avatar" data-panel="avatar" style="display:none">
-    <div class="panel-body panel-body-avatar" id="panel-avatar-body">
-      <canvas id="avatar-canvas"></canvas>
-    </div>
-  </section>
 
   <section class="panel" id="panel-vitals" data-panel="vitals" style="display:none">
     <div class="panel-body" id="panel-vitals-body">
@@ -233,9 +243,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
 <!-- App scripts -->
-<script src="static/avatar-hologram.js?v=11"></script>
+<script src="static/avatar-hologram.js?v=12"></script>
 <script src="static/neural-bg.js?v=11"></script>
-<script type="module" src="static/app.js?v=11"></script>
+<script type="module" src="static/app.js?v=12"></script>
 
 <!-- Service Worker -->
 <script>
