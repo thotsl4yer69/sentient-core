@@ -13,6 +13,7 @@ from pathlib import Path
 
 from sentient.common import mqtt_topics
 from sentient.common.service_base import SentientService
+from sentient.common.voice_timing import voice_stage
 
 
 class PiperTTSWorker(SentientService):
@@ -93,8 +94,10 @@ class PiperTTSWorker(SentientService):
         if not text:
             return
         turn_id = request.get("turn_id")
+        voice_stage(self.logger, turn_id, "tts_received")
         tts_id = uuid.uuid4().hex
         async with self._play_lock:
+            voice_stage(self.logger, turn_id, "tts_job_started")
             if turn_id and turn_id in self._blocked_turn_ids:
                 await self.mqtt_publish(mqtt_topics.TTS_COMPLETED, {
                     "id": tts_id, "turn_id": turn_id,
@@ -107,14 +110,18 @@ class PiperTTSWorker(SentientService):
             with tempfile.TemporaryDirectory(prefix="airi-tts-") as folder:
                 wav_path = os.path.join(folder, "speech.wav")
                 try:
+                    voice_stage(self.logger, turn_id, "tts_synthesis_started")
                     await self._run_speech_process(
                         (self.piper_bin, "--model", self.voice_model,
                          "--output_file", wav_path),
                         stdin=text.encode("utf-8"),
                     )
+                    voice_stage(self.logger, turn_id, "tts_synthesis_complete")
                     if self._cancel_requested:
                         status = "cancelled"
                     else:
+                        # This marks the player request, not first audible PCM sample.
+                        voice_stage(self.logger, turn_id, "playback_requested")
                         await self.mqtt_publish(mqtt_topics.TTS_STARTED, {
                             "id": tts_id, "turn_id": turn_id, "source": "piper_tts",
                         })
@@ -130,6 +137,7 @@ class PiperTTSWorker(SentientService):
                     self.logger.error("TTS failure for %s: %s", turn_id, exc)
                 finally:
                     self._active_turn_id = None
+                    voice_stage(self.logger, turn_id, "tts_complete", status=status)
                     await self.mqtt_publish(mqtt_topics.TTS_COMPLETED, {
                         "id": tts_id, "turn_id": turn_id,
                         "status": status, "source": "piper_tts",
