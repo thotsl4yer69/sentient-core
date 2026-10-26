@@ -1,5 +1,5 @@
 # AIRI on Jetson Orin Nano — release candidate handoff
-**Build prepared:** 2026-10-25  
+**Updated:** 2026-10-26  
 **Branch:** `fix/voice-routing-wake-skills-20261025` / PR #6  
 **Release maturity:** **Source CI candidate only. Not deployed or hardware-certified.**
 
@@ -15,6 +15,39 @@
 - Read-only host inventory and SHA-pinned one-service systemd canary script with automatic rollback on a failed restart.
 - Machine-testable unit and two-turn end-to-end simulated MQTT speech tests, plus more than 60 spoken intent fixtures.
 
+## 2026-10-26 source improvements — AIRI wake, avatar and playback
+
+- **Desired wake:** `Hey AIRI`. The configuration now points at
+  `/opt/sentient-core/models/wake/hey_airi.onnx` and checks it is a real,
+  loadable custom openWakeWord model with an unambiguous classifier key.
+  The model file has **not** been trained, installed or verified on the
+  Nano; until then the *working* `Hey Jarvis` model remains the fallback.
+  The dashboard displays the **actual active** wake phrase after an
+  observed activation, rather than claiming Hey AIRI is active.
+- **Avatar visible:** the formerly hidden Canvas2D hologram is now a
+  proper responsive dashboard panel with live wake/listening/transcribing/
+  thinking/speaking states. Browser chat text no longer triggers fake
+  audio-reading animations.
+- **Playback-coupled motion:** the local Piper worker derives a compact
+  40-ms WAV RMS amplitude envelope, and publishes it with matching
+  `turn_id`/`tts_id` during `TTS_STARTED`. The dashboard animates
+  against that envelope, stops on matching `TTS_COMPLETED`, and
+  guards against stale completions and indefinitely stuck playback.
+  **Important:** this represents the audio player *request* timeline.
+  It is **not** a measured acoustic speaker-loopback sync and does not
+  supply phoneme-correct facial motion.
+- **Avatar bridge:** no longer switches the face into speaking mode
+  merely because an LLM text reply arrived; speech state follows
+  correlated real Piper playback lifecycle events.
+- **Renderer honesty:** current version is a **procedural 2D hologram**.
+  It does not replace, fabricate, or certify any existing adult humanoid
+  GLB/avatar asset on the Nano. Those live assets and rigging are
+  not in the repository and still require on-device inspection.
+- **CI:** included tests for safe wake fallback/selection, WAV envelope
+  validation, avatar playback correlation and JavaScript syntax, in
+  addition to existing STT, inference routing, Home Assistant, diagnostics
+  and mocked MQTT consecutive-turn regression tests.
+
 ## Runtime dependency boundaries
 A working pre-existing Nano installation may have alternate STT/TTS services, USB audio assignments, a different installed model, GPU stack, avatar, Home Assistant token and model files. **Do not overwrite or restart that working stack from an unverified template.**
 
@@ -24,7 +57,7 @@ A working pre-existing Nano installation may have alternate STT/TTS services, US
 
 **For HA:** `SENTIENT_HOME_ASSISTANT_URL` and `SENTIENT_HOME_ASSISTANT_TOKEN` must come from a valid local instance, stored only in the existing protected service environment file. Avoid printing credentials. Direct Alexa controls are not independently supported unless exposed via HA.
 
-**For wake:** `SENTIENT_WAKE_WORD_MODEL=hey_jarvis` selects the installed wake classifier; custom models require a local `.onnx` or `.tflite` path. Retain the already working model if its key/path differs from the repository example.
+**For wake:** `SENTIENT_WAKE_WORD_MODEL` selects the trained candidate model, and `SENTIENT_WAKE_WORD_FALLBACK_MODEL=hey_jarvis` retains the working fallback. A trained and validated .onnx/.tflite classifier must exist before Hey AIRI can activate. Do not rename an unrelated wake model and call it trained.
 
 ## When the Nano becomes reachable — authorized deployment sequence
 1. **Read-only inventory:** remotely run `tools/nano_inventory.py` from the code repository on the Nano. Capture real service units and overrides, actual source SHAs, audio source/sink, NVIDIA/JetPack, CPU/GPU pressure, model, Python venv and HA connection. No secret values need be exported.
