@@ -130,6 +130,10 @@ function handleMessage(data) {
         window.avatarRenderer.processPhonemes({ phonemes: data.phonemes, duration: data.duration });
       }
       break;
+    case 'wake_detected':
+      window.avatarRenderer?.setWakePhrase?.(data.phrase);
+      window.avatarRenderer?.applyPipelineState?.('alert');
+      break;
     case 'tts_started':
       window.avatarRenderer?.startPlayback?.(data);
       break;
