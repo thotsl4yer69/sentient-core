@@ -43,6 +43,7 @@ import webrtcvad
 from sentient.config import get_config
 from sentient.common.service_base import SentientService
 from sentient.common import mqtt_topics
+from sentient.common.voice_timing import voice_stage
 
 # Audio constants
 SAMPLE_RATE = 16000          # Standard for Whisper and VAD
@@ -173,6 +174,8 @@ class VoicePipeline(SentientService):
             self._turn_timeout_task = None
             if task is not asyncio.current_task():
                 task.cancel()
+        voice_stage(self.logger, self._turn_id, "turn_finished", status=reason,
+                    duration_ms=round((time.monotonic() - self._turn_started_monotonic) * 1000))
         self._turn_active = False
         self._turn_id = None
         self.is_cortana_speaking = False
@@ -204,6 +207,7 @@ class VoicePipeline(SentientService):
         self.is_recording = True
         self._audio_buffer = []
 
+        voice_stage(self.logger, self._turn_id, "recording_started")
         self.logger.info("Starting audio recording with VAD...")
         await self._set_avatar_state("listening")
 
@@ -235,6 +239,8 @@ class VoicePipeline(SentientService):
                     is_speech = self.vad.is_speech(audio_chunk, SAMPLE_RATE)
 
                     if is_speech:
+                        if not speech_seen:
+                            voice_stage(self.logger, self._turn_id, "speech_started")
                         speech_seen = True
                         consecutive_silence_ms = 0
                     else:
@@ -263,6 +269,7 @@ class VoicePipeline(SentientService):
                 await self._set_avatar_state("idle")
                 return None
 
+            voice_stage(self.logger, self._turn_id, "vad_end")
             wav_bytes = self._create_wav_bytes(self._audio_buffer)
 
             duration = len(self._audio_buffer) * CHUNK_DURATION_MS / 1000.0
@@ -326,6 +333,7 @@ class VoicePipeline(SentientService):
             "timestamp": datetime.now().isoformat(),
         }
 
+        voice_stage(self.logger, self._turn_id, "stt_request")
         await self.mqtt_publish(mqtt_topics.STT_AUDIO_INPUT, payload)
         self.logger.info("Audio sent to STT service")
 
@@ -345,6 +353,7 @@ class VoicePipeline(SentientService):
 
         # This is the topic consumed by ConversationOrchestrator. Publishing to
         # PERSONA_CHAT_INPUT silently drops speech in the maintained v2 stack.
+        voice_stage(self.logger, self._turn_id, "conversation_sent")
         await self.mqtt_publish(mqtt_topics.VOICE_TRANSCRIPTION, payload)
         self.logger.info("Sent to conversation service")
 
@@ -365,6 +374,7 @@ class VoicePipeline(SentientService):
         self._turn_active = True
         self._turn_started_monotonic = time.monotonic()
         self._turn_id = uuid.uuid4().hex
+        voice_stage(self.logger, self._turn_id, "wake_received")
         if self._turn_timeout_task:
             self._turn_timeout_task.cancel()
         self._turn_timeout_task = asyncio.create_task(
@@ -408,6 +418,8 @@ class VoicePipeline(SentientService):
                 and payload["turn_id"] != self._turn_id):
             self.logger.warning("Ignoring late STT output for different voice turn")
             return
+        voice_stage(self.logger, self._turn_id, "stt_result",
+                    duration_ms=payload.get("duration_ms"))
         text = payload.get("text", "").strip()
         language = payload.get("language", "unknown")
         confidence = payload.get("language_probability", 0.0)
@@ -436,6 +448,7 @@ class VoicePipeline(SentientService):
             return
         text = payload.get("text", "").strip()
         emotion = payload.get("emotion", "neutral")
+        voice_stage(self.logger, self._turn_id, "chat_result")
 
         if not text:
             self.logger.warning("Empty response from persona")
@@ -462,6 +475,7 @@ class VoicePipeline(SentientService):
         self.current_tts_id = tts_id
         self.is_cortana_speaking = True
 
+        voice_stage(self.logger, self._turn_id, "tts_started_received")
         self.logger.info(f"TTS playback started: {tts_id}")
         await self._set_avatar_state("speaking", {"tts_id": tts_id})
 
@@ -474,13 +488,14 @@ class VoicePipeline(SentientService):
         self.logger.info(f"TTS playback completed: {tts_id}")
 
         linked_turn = payload.get("turn_id")
-        terminal_error = payload.get("status") in {"error", "cancelled"}
-        # A synthesis failure can emit COMPLETED without STARTED. A matching
-        # turn ID is enough to re-arm: never wait for the global watchdog.
+        # Even a successful COMPLETED can arrive without STARTED (missed event).
+        # Matching turn IDs must rearm rather than keeping the mic blocked until
+        # the watchdog. A completion from an older turn cannot end this turn.
         if tts_id == self.current_tts_id or (
             self._turn_active and linked_turn is not None
-            and linked_turn == self._turn_id and terminal_error
+            and linked_turn == self._turn_id
         ):
+            voice_stage(self.logger, self._turn_id, "tts_complete")
             await self._finish_turn(self._turn_id, payload.get("status", "completed"))
 
     # --- SentientService lifecycle overrides ---
