@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sentient.common import mqtt_topics
 from sentient.common.service_base import SentientService
+from sentient.common.voice_timing import voice_stage
 
 
 def decode_voice_wav(encoded: str):
@@ -75,23 +76,30 @@ class WhisperSTTWorker(SentientService):
     async def handle_audio(self, request):
         turn_id = request.get("turn_id")
         started = time.monotonic()
+        voice_stage(self.logger, turn_id, "stt_received")
         result = {
             "text": "", "language": "en", "language_probability": 0.0,
             "source": "whisper_stt", "turn_id": turn_id,
         }
         async with self._transcribe_lock:
+            voice_stage(self.logger, turn_id, "stt_job_started")
             try:
                 audio = request["audio"]
                 if audio.get("format") != "wav":
                     raise ValueError("Expected WAV format")
                 samples = decode_voice_wav(audio["data"])
+                voice_stage(self.logger, turn_id, "stt_decode_complete")
+                voice_stage(self.logger, turn_id, "stt_inference_started")
                 result["text"], result["language_probability"] = (
                     await asyncio.to_thread(self._transcribe, samples)
                 )
+                voice_stage(self.logger, turn_id, "stt_inference_complete")
             except Exception as exc:
                 result["error"] = str(exc)
                 self.logger.error("STT failed for %s: %s", turn_id, exc)
             result["duration_ms"] = round((time.monotonic() - started) * 1000)
+            voice_stage(self.logger, turn_id, "stt_publishing",
+                        duration_ms=result["duration_ms"])
             await self.mqtt_publish(mqtt_topics.STT_OUTPUT, result)
 
 
