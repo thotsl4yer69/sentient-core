@@ -490,6 +490,9 @@ class MQTTBridge:
                     await client.subscribe("sentient/avatar/expression")
                     await client.subscribe("sentient/conversation/state")
                     await client.subscribe("sentient/tts/output")
+                    await client.subscribe("sentient/tts/started")
+                    await client.subscribe("sentient/tts/completed")
+                    await client.subscribe("sentient/avatar/state")
                     await client.subscribe("sentient/avatar/speaking")
                     await client.subscribe("sentient/persona/state")
                     await client.subscribe("sentient/persona/thought_stream")
@@ -641,6 +644,33 @@ class MQTTBridge:
                 "response": payload.get("response", ""),
                 "emotion": payload.get("emotion", {}),
                 "total_time_ms": payload.get("total_time_ms", 0)
+            })
+
+        elif topic == "sentient/tts/started":
+            # Piper emits this when speaker playback is requested. The waveform
+            # is derived from the actual WAV and shares a per-turn TTS ID.
+            await self.connection_manager.broadcast({
+                "type": "tts_started",
+                "turn_id": payload.get("turn_id"),
+                "tts_id": payload.get("id"),
+                "envelope": payload.get("envelope", [])[:450],
+                "duration": payload.get("duration", 0),
+            })
+
+        elif topic == "sentient/tts/completed":
+            await self.connection_manager.broadcast({
+                "type": "tts_completed",
+                "turn_id": payload.get("turn_id"),
+                "tts_id": payload.get("id"),
+                "status": payload.get("status", "completed"),
+            })
+
+        elif topic == "sentient/avatar/state":
+            await self.connection_manager.broadcast({
+                "type": "avatar_state",
+                "state": payload.get("state", "idle"),
+                "turn_id": payload.get("turn_id"),
+                "stage": payload.get("stage"),
             })
 
         elif topic == "sentient/avatar/speaking":
