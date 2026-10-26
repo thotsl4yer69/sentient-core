@@ -48,6 +48,7 @@ from sentient.config import get_config
 from sentient.common.service_base import SentientService
 from sentient.common.logging import setup_logging
 from sentient.common import mqtt_topics
+from sentient.common.voice_timing import voice_stage
 from sentient.services.conversation.system_tools import SystemTools
 
 
@@ -622,6 +623,7 @@ class ConversationOrchestrator(SentientService):
 
         try:
             full_text = []
+            first_token_seen = False
             async with self.http_session.post(
                 f"{self.contemplation_url}/generate/stream",
                 json=request_data,
@@ -637,6 +639,10 @@ class ConversationOrchestrator(SentientService):
                         token = data.get("token", "")
                         done = data.get("done", False)
                         if token:
+                            if not first_token_seen:
+                                voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                                            "llm_first_token")
+                                first_token_seen = True
                             full_text.append(token)
                             # Publish partial token for progressive display
                             await self.mqtt_publish(
@@ -786,6 +792,8 @@ class ConversationOrchestrator(SentientService):
     ):
         """Publish response to all appropriate output channels"""
         try:
+            voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                        "chat_publishing")
             # 1. Publish to chat output
             chat_payload = {
                 'text': response.text,
@@ -834,6 +842,8 @@ class ConversationOrchestrator(SentientService):
                         'turn_id': (context.metadata or {}).get('turn_id')
                     }
                 )
+                voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                            "tts_request_sent")
                 self.logger.debug("Published to TTS")
 
             self.logger.info(f"Response delivered to {context.user_id}: {response.text[:50]}...")
@@ -894,6 +904,7 @@ class ConversationOrchestrator(SentientService):
         8. Store interaction in memory
         9. Update conversation state
         """
+        voice_stage(self.logger, turn_id, "conversation_processing_started")
         # Update state
         await self._update_state(ConversationState.PROCESSING)
 
@@ -948,6 +959,7 @@ class ConversationOrchestrator(SentientService):
                     text=direct_text, should_speak=voice_mode
                 )
                 await self._publish_response(context, response)
+                voice_stage(self.logger, turn_id, "direct_action_complete")
                 self.conversation_histories.setdefault(user_id, []).extend([
                     {"role": "user", "content": user_text},
                     {"role": "assistant", "content": direct_text},
@@ -969,6 +981,7 @@ class ConversationOrchestrator(SentientService):
                 self._get_relevant_memories(user_text, user_id),
                 self._get_world_state(),
             )
+            voice_stage(self.logger, turn_id, "context_ready")
             mood_context = self._mood_to_context(mood)
             core_facts = self._format_core_facts(core_memory)
             self.logger.debug(f"Retrieved {len(memories)} relevant memories")
@@ -1025,6 +1038,7 @@ class ConversationOrchestrator(SentientService):
             # Step 3: Generate response
             response_start = time.time()
             await self._update_state(ConversationState.RESPONDING)
+            voice_stage(self.logger, turn_id, "llm_started")
             if deep_contemplate:
                 self.logger.info("Deep contemplation mode activated")
                 await self.mqtt_publish(mqtt_topics.PERSONA_STATE, {
@@ -1043,6 +1057,7 @@ class ConversationOrchestrator(SentientService):
                     system_context=system_context
                 )
 
+            voice_stage(self.logger, turn_id, "llm_complete")
             # Append assistant response to history
             user_history.append({"role": "assistant", "content": response.text})
 
@@ -1055,6 +1070,7 @@ class ConversationOrchestrator(SentientService):
 
             # Step 4: Publish response
             await self._publish_response(context, response, suggestions=suggestions)
+            voice_stage(self.logger, turn_id, "response_published")
 
             # Steps 4.5-6: Post-response tasks in parallel (independent)
             detected_emotion = response.emotion or self._detect_emotion_from_text(response.text)
@@ -1075,6 +1091,7 @@ class ConversationOrchestrator(SentientService):
             self.logger.info(f"Conversation turn {context.turn_number} complete")
 
         except Exception as e:
+            voice_stage(self.logger, turn_id, "conversation_error", status="error")
             self.logger.error(f"Error processing input: {e}", exc_info=True)
             await self._update_state(ConversationState.ERROR)
 
@@ -1481,6 +1498,7 @@ class ConversationOrchestrator(SentientService):
             self.logger.warning("Received empty voice transcription")
             return
 
+        voice_stage(self.logger, message.get("turn_id"), "conversation_received")
         self.logger.info(f"Voice transcription (confidence: {confidence:.2f}): {user_text}")
 
         lock = self._user_turn_locks.setdefault(user_id, asyncio.Lock())
