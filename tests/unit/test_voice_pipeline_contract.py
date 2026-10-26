@@ -144,3 +144,32 @@ def test_old_tts_completion_cannot_finish_new_voice_turn(pipeline):
     }))
     assert pipeline._turn_active
     assert pipeline._turn_id == "new-turn"
+
+
+def test_successful_tts_completion_rearms_when_started_was_lost(pipeline):
+    """A lost MQTT STARTED must not leave the microphone locked for 75s."""
+    pipeline._turn_id = "turn-with-lost-started"
+    pipeline._turn_active = True
+    pipeline.current_tts_id = None
+    asyncio.run(pipeline._handle_tts_completed({
+        "turn_id": "turn-with-lost-started",
+        "id": "speech-done",
+        "status": "completed",
+    }))
+    assert not pipeline._turn_active
+    assert pipeline._turn_id is None
+
+
+def test_timing_markers_have_correlated_turn_id(pipeline, caplog):
+    pipeline._turn_id = "timed-turn"
+    pipeline._turn_active = True
+    pipeline._turn_started_monotonic = __import__("time").monotonic()
+    with caplog.at_level(logging.INFO):
+        asyncio.run(pipeline._handle_stt_output({
+            "text": "Hello",
+            "turn_id": "timed-turn",
+            "duration_ms": 123,
+        }))
+    assert "AIRI_TIMING " in caplog.text
+    assert '"turn_id":"timed-turn"' in caplog.text
+    assert '"stage":"stt_result"' in caplog.text
