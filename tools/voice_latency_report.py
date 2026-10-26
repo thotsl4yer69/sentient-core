@@ -12,14 +12,28 @@ Metrics are stage markers, not microphone loopback. In particular
 """
 import argparse
 import json
-import re
-import statistics
 import sys
 
 MARKER = "AIRI_TIMING "
-MAIN = ("wake_received", "vad_end", "stt_result", "context_ready",
-        "llm_first_token", "llm_complete", "tts_synthesis_complete",
-        "playback_requested", "tts_complete", "turn_finished")
+MAIN = ("wake_received", "speech_started", "vad_end", "stt_received",
+        "stt_result", "conversation_received", "context_ready",
+        "llm_first_token", "llm_complete", "tts_received",
+        "tts_synthesis_complete", "playback_requested", "tts_complete",
+        "turn_finished")
+STAGE_PAIRS = {
+    "capture_ms": ("wake_received", "vad_end"),
+    "stt_queue_ms": ("stt_received", "stt_job_started"),
+    "stt_inference_ms": ("stt_inference_started", "stt_inference_complete"),
+    "stt_delivery_ms": ("stt_publishing", "stt_result"),
+    "conversation_queue_ms": ("conversation_received", "conversation_processing_started"),
+    "context_wait_ms": ("conversation_received", "context_ready"),
+    "model_first_token_ms": ("llm_started", "llm_first_token"),
+    "model_total_ms": ("llm_started", "llm_complete"),
+    "tts_queue_ms": ("tts_received", "tts_job_started"),
+    "tts_synthesis_ms": ("tts_synthesis_started", "tts_synthesis_complete"),
+    "playback_process_ms": ("playback_requested", "tts_complete"),
+}
+
 
 
 def read_turns(lines):
@@ -71,14 +85,16 @@ def build_report(turns):
                 samples.setdefault(stage, []).append(milliseconds)
         if "playback_requested" in deltas:
             deltas["wake_to_playback_request_ms"] = deltas["playback_requested"]
-        if "tts_synthesis_complete" in stages and "tts_synthesis_started" in stages:
-            deltas["tts_synthesis_ms"] = round((
-                stages["tts_synthesis_complete"] - stages["tts_synthesis_started"]
-            ) / 1_000_000, 1)
-        if "context_ready" in stages and "conversation_received" in stages:
-            deltas["context_wait_ms"] = round((
-                stages["context_ready"] - stages["conversation_received"]
-            ) / 1_000_000, 1)
+        for metric, (start, stop) in STAGE_PAIRS.items():
+            if start in stages and stop in stages and stages[stop] >= stages[start]:
+                delta = round((stages[stop] - stages[start]) / 1_000_000, 1)
+                deltas[metric] = delta
+                samples.setdefault(metric, []).append(delta)
+        measured = [(metric, deltas[metric]) for metric in STAGE_PAIRS
+                    if metric in deltas and metric not in ("capture_ms", "model_total_ms")]
+        if measured:
+            worst = max(measured, key=lambda item: item[1])
+            deltas["largest_measured_stage"] = worst[0]
         per_turn[turn_id] = deltas
     summary = {
         name: {"count": len(values), "p50_ms": quantile(values, 0.5),
