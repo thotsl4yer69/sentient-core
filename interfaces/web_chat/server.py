@@ -493,6 +493,7 @@ class MQTTBridge:
                     await client.subscribe("sentient/tts/started")
                     await client.subscribe("sentient/tts/completed")
                     await client.subscribe("sentient/avatar/state")
+                    await client.subscribe("sentient/wake/detected")
                     await client.subscribe("sentient/avatar/speaking")
                     await client.subscribe("sentient/persona/state")
                     await client.subscribe("sentient/persona/thought_stream")
@@ -663,6 +664,13 @@ class MQTTBridge:
                 "turn_id": payload.get("turn_id"),
                 "tts_id": payload.get("id"),
                 "status": payload.get("status", "completed"),
+            })
+
+        elif topic == "sentient/wake/detected":
+            await self.connection_manager.broadcast({
+                "type": "wake_detected",
+                "phrase": payload.get("wake_phrase", ""),
+                "model": payload.get("wake_model", ""),
             })
 
         elif topic == "sentient/avatar/state":
