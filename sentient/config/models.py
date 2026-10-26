@@ -56,7 +56,12 @@ class NtfyConfig:
 @dataclass
 class WakeWordConfig:
     """Wake word detection configuration."""
-    model: str = "hey_jarvis"
+    # Desired new phrase is activated only when the matching trained model
+    # is installed and can be loaded. Never silently drop wake capability.
+    model: str = "/opt/sentient-core/models/wake/hey_airi.onnx"
+    phrase: str = "Hey AIRI"
+    fallback_model: str = "hey_jarvis"
+    fallback_phrase: str = "Hey Jarvis"
     sensitivity: float = 0.5
 
 
