@@ -2343,3 +2343,15 @@ pre:hover .code-copy-btn {
   color: #888;
   font-size: 0.65rem;
 }
+
+
+/* AIRI Presence v4 — visible, resize-safe holographic stage */
+.sidebar-avatar { min-height: 290px; height: clamp(290px, 37vh, 410px); overflow: hidden; }
+.sidebar-avatar .panel-body-avatar { overflow: hidden; background: radial-gradient(ellipse at 50% 52%, rgba(45, 117, 152, 0.14) 0%, rgba(9, 16, 29, 0.25) 60%, transparent 100%); }
+.sidebar-avatar #avatar-canvas { width: 100%; height: 100%; min-height: 0; display: block; }
+.avatar-live-label { font: 600 10px/1.3 'JetBrains Mono', monospace; letter-spacing: .12em; color: #73d7eb; }
+.avatar-presence-footer { pointer-events: none; position: absolute; bottom: 6px; left: 9px; right: 9px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; font: 9px/1.3 'JetBrains Mono', monospace; color: rgba(140, 218, 240, .75); letter-spacing: .04em; }
+.avatar-presence-footer span { padding: 3px 5px; background: rgba(1, 14, 26, .72); border: 1px solid rgba(115, 215, 235, .14); border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-avatar, .avatar-live-label { animation: none !important; }
+}
