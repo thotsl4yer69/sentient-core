@@ -53,6 +53,16 @@ class WakeWordService(SentientService):
         # Detection parameters from config
         self.detection_threshold: float = self.cfg.wake_word.sensitivity
         self.wake_model_name: str = self.cfg.wake_word.model
+        self.requested_phrase: str = getattr(
+            self.cfg.wake_word, "phrase", "Hey AIRI"
+        )
+        self.fallback_model_name: str = getattr(
+            self.cfg.wake_word, "fallback_model", ""
+        )
+        self.fallback_phrase: str = getattr(
+            self.cfg.wake_word, "fallback_phrase", "Hey Jarvis"
+        )
+        self.active_phrase: Optional[str] = None
         self.cooldown_seconds: float = cooldown_seconds
 
         # Audio components
@@ -137,60 +147,89 @@ class WakeWordService(SentientService):
             self.logger.error(f"Failed to initialize audio: {e}")
             return False
 
-    def _initialize_model(self) -> bool:
-        """Load and verify exactly the requested wake model.
+    def _load_wake_candidate(self, selected: str):
+        """Load one installed OpenWakeWord classifier, with exact key check.
 
-        A phrase in the config is not a trained classifier. Built-in model
-        names must match an installed OpenWakeWord model; custom phrases
-        require an existing .onnx or .tflite model file.
+        A phrase is NOT a model: never interpret a missing custom .onnx as
+        a successful new wake phrase. Return the model/key only after load.
         """
-        try:
-            selected = str(self.wake_model_name).strip()
-            if not selected:
-                raise ValueError("Wake-word model must be configured")
+        selected = selected.strip()
+        if not selected:
+            raise ValueError("Wake model selection is empty")
+        custom_file = (Path(selected).expanduser()
+                       if selected.lower().endswith((".onnx", ".tflite"))
+                       else None)
+        if custom_file is not None:
+            if not custom_file.is_file():
+                raise FileNotFoundError(f"Wake model file missing: {custom_file}")
+            kwargs = {
+                "wakeword_models": [str(custom_file)],
+                "enable_speex_noise_suppression": False,
+            }
+            if custom_file.suffix.lower() == ".onnx":
+                kwargs["inference_framework"] = "onnx"
+            model = Model(**kwargs)
+            expected = custom_file.stem.lower().replace(" ", "_").replace("-", "_")
+        else:
+            model = Model(enable_speex_noise_suppression=False)
+            expected = selected.lower().replace(" ", "_").replace("-", "_")
 
-            custom_file = Path(selected).expanduser() if selected.lower().endswith(
-                (".onnx", ".tflite")
-            ) else None
-            if custom_file is not None:
-                if not custom_file.is_file():
-                    raise FileNotFoundError(f"Custom wake model not found: {custom_file}")
-                kwargs = {
-                    "wakeword_models": [str(custom_file)],
-                    "enable_speex_noise_suppression": False,
-                }
-                if custom_file.suffix.lower() == ".onnx":
-                    kwargs["inference_framework"] = "onnx"
-                self.oww_model = Model(**kwargs)
-                expected = custom_file.stem.lower().replace(" ", "_")
-            else:
-                self.oww_model = Model(enable_speex_noise_suppression=False)
-                expected = selected.lower().replace(" ", "_").replace("-", "_")
+        available = list(model.models.keys())
+        matches = [
+            key for key in available
+            if key.lower().replace(" ", "_").replace("-", "_") == expected
+            or key.lower().replace(" ", "_").replace("-", "_").startswith(
+                expected + "_v"
+            )
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Wake model {selected!r} matched {matches}, "
+                f"available {available}"
+            )
+        return model, matches[0]
 
-            available = list(self.oww_model.models.keys())
-            matching = [
-                name for name in available
-                if name.lower().replace(" ", "_").replace("-", "_") == expected
-                or name.lower().replace(" ", "_").replace("-", "_").startswith(expected + "_v")
-            ]
-            if len(matching) != 1:
-                raise ValueError(
-                    f"Configured wake model {selected!r} matched {matching}; "
-                    f"available models: {available}. Set SENTIENT_WAKE_WORD_MODEL "
-                    "to an installed model name or trained model file."
-                )
+    def _initialize_model(self) -> bool:
+        """Use Hey AIRI if a real detector is installed; otherwise stay awake.
 
-            self.active_model_key = matching[0]
+        Current known-good Jarvis model is retained until Hey AIRI training,
+        validation and device commissioning are complete. A broken custom
+        model must not leave the assistant permanently deaf.
+        """
+        self.active_model_key = None
+        self.active_phrase = None
+        candidates = [(self.wake_model_name, self.requested_phrase)]
+        if (self.fallback_model_name
+                and self.fallback_model_name != self.wake_model_name):
+            candidates.append((self.fallback_model_name, self.fallback_phrase))
+
+        for index, (name, phrase) in enumerate(candidates):
+            try:
+                model, key = self._load_wake_candidate(str(name))
+            except Exception as exc:
+                if index == 0 and len(candidates) > 1:
+                    self.logger.warning(
+                        "Desired wake phrase %r is not ready (%s). "
+                        "Keeping existing fallback %r.",
+                        phrase, exc, self.fallback_phrase,
+                    )
+                else:
+                    self.logger.error(
+                        "Wake model unavailable for %r: %s", phrase, exc
+                    )
+                continue
+            self.oww_model = model
+            self.active_model_key = key
+            self.active_phrase = phrase
             self.logger.info(
-                "Active wake word model: %s (threshold %.2f)",
-                self.active_model_key, self.detection_threshold
+                "Active wake phrase: %s | classifier: %s | threshold: %.2f",
+                self.active_phrase, self.active_model_key,
+                self.detection_threshold,
             )
             return True
-
-        except Exception as e:
-            self.active_model_key = None
-            self.logger.error(f"Failed to initialize requested wake word: {e}")
-            return False
+        self.oww_model = None
+        self.logger.error("No usable wake model, refusing to start deaf")
+        return False
 
     def _audio_capture_thread(self):
         """Blocking audio capture running in a daemon thread.
@@ -289,6 +328,8 @@ class WakeWordService(SentientService):
             "timestamp": time.time(),
             "confidence": confidence,
             "service": "wake_word",
+            "wake_phrase": self.active_phrase,
+            "wake_model": self.active_model_key,
         }
 
         await self.mqtt_publish(mqtt_topics.WAKE_WORD_DETECTED, payload)
