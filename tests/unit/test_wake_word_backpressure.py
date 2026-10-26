@@ -225,3 +225,47 @@ def test_speech_gate_blocks_then_rearms(service, monkeypatch):
     assert instance._should_suspend()
     clock[0] += 0.31
     assert not instance._should_suspend()
+
+
+def test_airi_candidate_falls_back_to_existing_jarvis_model(service, monkeypatch):
+    module, instance = service
+    instance.wake_model_name = "/opt/sentient-core/models/wake/hey_airi.onnx"
+    instance.requested_phrase = "Hey AIRI"
+    instance.fallback_model_name = "hey_jarvis"
+    instance.fallback_phrase = "Hey Jarvis"
+    monkeypatch.setattr(module, "Model", lambda **kw: SimpleNamespace(
+        models={"hey_jarvis_v0.1": object()}
+    ))
+    assert instance._initialize_model()
+    assert instance.active_model_key == "hey_jarvis_v0.1"
+    assert instance.active_phrase == "Hey Jarvis"
+
+
+def test_airi_candidate_switches_only_when_real_trained_classifier_exists(service, monkeypatch, tmp_path):
+    module, instance = service
+    model_file = tmp_path / "hey_airi.onnx"
+    model_file.write_bytes(b"dummy model validated by mocked loader")
+    instance.wake_model_name = str(model_file)
+    instance.requested_phrase = "Hey AIRI"
+    instance.fallback_model_name = "hey_jarvis"
+    instance.fallback_phrase = "Hey Jarvis"
+    loaded = []
+    def fake_loader(**kwargs):
+        loaded.append(kwargs)
+        return SimpleNamespace(models={"hey_airi": object()})
+    monkeypatch.setattr(module, "Model", fake_loader)
+    assert instance._initialize_model()
+    assert instance.active_phrase == "Hey AIRI"
+    assert instance.active_model_key == "hey_airi"
+    assert len(loaded) == 1
+    assert loaded[0]["wakeword_models"] == [str(model_file)]
+
+
+def test_missing_both_models_fails_closed(service, monkeypatch):
+    module, instance = service
+    instance.wake_model_name = "not_installed"
+    instance.fallback_model_name = "not_installed_either"
+    monkeypatch.setattr(module, "Model", lambda **kwargs: SimpleNamespace(models={}))
+    assert not instance._initialize_model()
+    assert instance.active_phrase is None
+    assert instance.active_model_key is None
