@@ -7,15 +7,15 @@ Architecture: a separate compatible Linux host runs OpenShell, while the existin
     OpenShell gateway (kernel >= 6.2 / Landlock ABI >= 3 / Docker >= 28)
        | OpenShell isolated Python diagnostic agent
        | provider whitelist: host.openshell.internal:11435
-       | SSH local tunnel: 127.0.0.1:11435 -> Nano 127.0.0.1:11434
+       | SSH Docker-bridge-only listener: host-gateway:11435 -> Nano 127.0.0.1:11434
        +-------------------------------------> Orin Nano Ollama (unchanged)
 
 ## Gateway steps (when an authorised machine is reachable)
 
-1. On a separate, suitable Linux host, use `python3 integrations/openshell/preflight.py`. This is read-only and refuses older kernels, disabled Landlock, or unsupported Docker.
-2. Confirm the Nano's Ollama daemon answers from the Nano at `127.0.0.1:11434` and the gateway already has trusted host-key and SSH-key access. Do not expose Ollama on `0.0.0.0`.
-3. On the gateway host set `NANO_SSH_HOST` and `NANO_SSH_USER` to the live, verified Nano SSH endpoint; run `bash integrations/openshell/ssh-tunnel.sh` under an appropriate service manager. The tunnel refuses new SSH host keys and password prompts; it never alters the Nano.
-4. Install the stable OpenShell CLI and gateway **on the compatible host** using [NVIDIA's installation guide](https://docs.nvidia.com/openshell/latest/about/installation/). Do not install directly onto an unsupported JetPack 6 kernel.
+1. On a separate, suitable Linux host, use `python3 integrations/openshell/preflight.py`. This is read-only and refuses older kernels, disabled Landlock, or unsupported Docker. Use Docker Engine 28 or later.
+2. Confirm the Nano's Ollama daemon answers from the Nano at `127.0.0.1:11434` and the gateway already has trusted host-key and SSH-key access. Do not expose Ollama on `0.0.0.0`. The tunnel listens **only on the Docker default bridge gateway IP**, not on the machine's LAN or wildcard interface. On Linux, `host.openshell.internal` must resolve to the same Docker host-gateway address; confirm with the sandbox smoke test.
+3. On the gateway host set `NANO_SSH_HOST` and `NANO_SSH_USER` to the live, verified Nano SSH endpoint; run `bash integrations/openshell/ssh-tunnel.sh` under an appropriate service manager. The script requires Docker's default `bridge` network and a pre-trusted SSH host key; it refuses passwords and new host keys. The tunnel refuses new SSH host keys and password prompts; it never alters the Nano.
+4. The deploy script installs **pinned OpenShell v0.1.5** on the compatible gateway if absent, using NVIDIA's [official installer](https://docs.nvidia.com/openshell/latest/about/installation/). Do not install directly onto an unsupported JetPack 6 kernel.
 5. With the tunnel available, run `bash integrations/openshell/deploy-gateway.sh` on that host. It qualifies the host, builds a small CPU-only image, lints/imports a narrowly-scoped provider, creates a sandbox once, inspects effective policy, and executes an Ollama inventory smoke test.
 6. Run a bounded local-model inference probe with `openshell sandbox exec --name mazlabz-orin-diagnostics -- python3 /opt/mazlabz/diagnostic_agent.py --prompt 'Summarise the available local inference capabilities.'`.
 
