@@ -1,0 +1,24 @@
+name: OpenShell gateway integration checks
+on:
+  push:
+    paths:
+      - "integrations/openshell/**"
+      - ".github/workflows/openshell-checks.yml"
+  pull_request:
+    paths:
+      - "integrations/openshell/**"
+      - ".github/workflows/openshell-checks.yml"
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python integration contract tests
+        run: python3 -m unittest discover -s integrations/openshell/tests -v
+      - name: Bash syntax
+        run: bash -n integrations/openshell/deploy-gateway.sh integrations/openshell/ssh-tunnel.sh
+      - name: Python syntax
+        run: python3 -m py_compile integrations/openshell/preflight.py integrations/openshell/diagnostic_agent.py
