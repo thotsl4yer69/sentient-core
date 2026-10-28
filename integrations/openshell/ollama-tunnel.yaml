@@ -1,0 +1,15 @@
+id: mazlabz-orin-ollama
+display_name: MAZLABZ Orin Nano Ollama (SSH tunnel)
+description: Credential-free access only to Nano inference over gateway-host SSH tunnel
+category: inference
+inference_capable: true
+credentials: []
+endpoints:
+  - host: host.openshell.internal
+    port: 11435
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+binaries:
+  - /usr/local/bin/python3.*
+  - /usr/local/bin/python3
