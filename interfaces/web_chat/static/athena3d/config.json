@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "defaultProfile": "mpfb",
+  "profiles": [
+    {"id":"mpfb","label":"Athena · MPFB human","url":"models/athena.glb","body":"F","license":"CC0","style":"athena"}
+  ]
+}
