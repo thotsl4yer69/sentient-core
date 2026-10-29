@@ -16,8 +16,12 @@ import json
 import logging
 import re
 import time
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional, Tuple, List
+
+from sentient.services.conversation.home_assistant import HomeAssistantSkill
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +125,15 @@ class SystemTools:
             "dmesg": ["dmesg", "--time-format=reltime", "-n", "err"],
         },
 
+        # --- Discoverable Skills ---
+        "skills": {"catalog": None},
+
+        # --- Deterministic Local Clock ---
+        "clock": {"current": None},
+
+        # --- Home Assistant ---
+        "home_assistant": {"handle": None},
+
         # --- Weather ---
         "weather": {
             "current_weather": None,  # handled by _get_weather
@@ -143,6 +156,24 @@ class SystemTools:
     #      process before system_info (both match "cpu"/"memory"),
     #      self_awareness before ollama (both match "model").
     INTENT_PATTERNS = {
+        "skills": {"catalog": [r"^(?:hey jarvis[, ]+)?(?:what can you do|list (?:your )?skills|show (?:your )?skills|what are your capabilities)[?.! ]*$"]},
+        # --- Deterministic clock for voice turns: anchor to avoid false matches ---
+        "clock": {
+            "current": [r"^(?:hey jarvis[, ]+)?(?:what(?:\u0027s| is) the time(?: now)?|what time is it(?: now)?|tell me the time|current time|time please|what(?:\u0027s| is) the date(?: today)?|what day is it(?: today)?|today(?:\u0027s| is) date)[?.! ]*$"],
+        },
+        "home_assistant": {
+            "handle": [r"\bhome assistant\b",
+                       r"^(?:hey jarvis[, ]+)?(?:set|make|change|turn)\s+.+?\b(?:lights?|lamps?)\b.+?\b(?:violet|purple|blue|red|green|yellow|orange|pink|white|cyan|magenta|indigo)\b",
+                       r"^(?:hey jarvis[, ]+)?(?:play|start)\s+.+\s+on\s+(?:the\s+)?(?:tv|television|speaker|.+)",
+                       r"^(?:hey jarvis[, ]+)?(?:make|set|dim)\s+it\s+(?:to\s+)?\d{1,3}\s*(?:percent|%)",
+                       r"^(?:hey jarvis[, ]+)?(?:dim|brighten|set)\s+.+\b(?:\d{1,3}\s*(?:percent|%))",
+                       r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+(?:on|off)\s+",
+                       r"^(?:hey jarvis[, ]+)?(?:turn|switch)\s+.+\s+(?:on|off)$",
+                       r"^(?:hey jarvis[, ]+)?(?:set|make|change|turn)\s+.+\s+(?:to\s+)?(?:violet|purple|blue|red|green|yellow|orange|pink|white|cyan|magenta|indigo)$",
+                       r"^(?:hey jarvis[, ]+)?(?:run|activate|start)\s+(?:the\s+)?(?:scene|script)\s+",
+                       r"^(?:hey jarvis[, ]+)?(?:pause|resume|stop|play)\s+(?:the\s+)?(?:music|media|playback|tv|speaker)",
+                       r"\b(?:list|show|which|what)\b.*\b(?:lights|switches|speakers|scenes|scripts|devices)\b"],
+        },
         # --- Most specific first ---
         "memory_tools": {
             "store_memory": [r"remember\s+that\b", r"store.*memory", r"save.*memory",
@@ -234,11 +265,11 @@ class SystemTools:
             "set_reminder": [r"remind\s+me\b", r"set.*reminder", r"set.*timer", r"alert.*me.*in\b",
                              r"notify.*me.*in\b", r"wake.*me.*in\b", r"in\s+\d+\s*(min|hour|sec)",
                              r"remind.*at\s+\d", r"timer\s+for\b"],
+            "cancel_reminder": [r"cancel.*reminder", r"delete.*reminder", r"remove.*reminder",
+                                r"clear.*reminder", r"stop.*reminder"],
             "list_reminders": [r"list.*reminder", r"show.*reminder", r"my.*reminder",
                                r"what.*remind", r"pending.*reminder", r"active.*reminder",
                                r"upcoming.*reminder"],
-            "cancel_reminder": [r"cancel.*reminder", r"delete.*reminder", r"remove.*reminder",
-                                r"clear.*reminder", r"stop.*reminder"],
         },
         "weather": {
             "current_weather": [r"\bweather\b", r"temperature.*outside", r"how.*cold", r"how.*hot",
@@ -250,11 +281,12 @@ class SystemTools:
             "memory": [r"check.*memory", r"free.*memory", r"how much.*memory",
                        r"\bram\b", r"memory.*usage"],
             "disk": [r"\bdisk\b", r"disk space", r"storage", r"how much.*space"],
+            "temperature": [r"\btemperature\b", r"\btemp\b", r"how hot", r"thermal"],
             "cpu_info": [r"cpu\s*(info|load|usage)", r"processor", r"load average",
                          r"\bcpu\b"],
             "gpu_status": [r"gpu\s*(status|info|load|temp)", r"graphics", r"tegra",
                            r"\bgpu\b"],
-            "temperature": [r"\btemperature\b", r"\btemp\b", r"how hot", r"thermal"],
+
         },
     }
 
@@ -418,7 +450,7 @@ class SystemTools:
     # EXECUTION
     # =================================================================
 
-    async def execute(self, category: str, command: str, user_message: str = "") -> str:
+    async def execute(self, category: str, command: str, user_message: str = "", user_id: str = "voice_user") -> str:
         """Execute a system tool command."""
 
         # --- Combined / multi-command handlers ---
@@ -430,6 +462,9 @@ class SystemTools:
 
         # --- Special handlers ---
         handlers = {
+            ("skills", "catalog"): lambda: self._get_skill_catalog(),
+            ("clock", "current"): lambda: self._get_local_clock(user_message),
+            ("home_assistant", "handle"): lambda: HomeAssistantSkill().execute(user_message, user_id=user_id),
             ("system_info", "gpu_status"): lambda: self._get_gpu_info(),
             ("system_info", "temperature"): lambda: self._get_temperatures(),
             ("network", "wifi_info"): lambda: self._get_wifi_info(),
@@ -476,6 +511,36 @@ class SystemTools:
             return "Command not available."
 
         return await self._run_command(cmd_template)
+
+    async def _get_skill_catalog(self) -> str:
+        """Describe implemented skills without claiming unavailable integrations."""
+        ha_ready = bool(
+            os.environ.get("SENTIENT_HOME_ASSISTANT_URL")
+            and os.environ.get("SENTIENT_HOME_ASSISTANT_TOKEN")
+        )
+        ha_state = "configured" if ha_ready else "requires Home Assistant connection"
+        return (
+            "Available skills: conversational AI; local time/date; service, "
+            "CPU, GPU and memory diagnostics; memory search and reminders; "
+            "avatar expressions; network status; local model information. "
+            "Home Assistant (" + ha_state + "): discover devices, lights, "
+            "switches, color/brightness, media pause/resume, scenes, scripts "
+            "and sequential compound commands. Alexa actions require a "
+            "supported Home Assistant integration or exposed routine; "
+            "direct arbitrary Alexa commands are not connected."
+        )
+
+    async def _get_local_clock(self, utterance: str = "") -> str:
+        """Return clock facts directly from the OS, never from an LLM guess."""
+        try:
+            zone = ZoneInfo(os.environ.get("SENTIENT_TZ", "Australia/Melbourne"))
+        except (KeyError, ValueError):
+            zone = ZoneInfo("Australia/Melbourne")
+        now = datetime.now(zone)
+        lower = utterance.lower()
+        if "date" in lower or "day is it" in lower:
+            return f"Today is {now.strftime('%A %d %B %Y')} in {now.tzname()}."
+        return f"It is {now.strftime('%-I:%M %p')} in {now.tzname()} on {now.strftime('%A %d %B %Y')}."
 
     # =================================================================
     # COMBINED HANDLERS

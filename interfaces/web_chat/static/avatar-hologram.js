@@ -54,6 +54,12 @@
             this.isThinking = false;
             this.attentionState = 'relaxed'; // 'focused', 'listening', 'alert', 'relaxed'
             this._speakTimeout = null;
+            this.activeTtsId = null;
+            this.activeTurnId = null;
+            this.envelope = [];
+            this.envelopeStartedAt = 0;
+            this.envelopeDuration = 0;
+            this.envelopeLevel = 0;
 
             // Animation time
             this.time = 0;
@@ -286,7 +292,9 @@
             }
 
             // Thinking state from emotion
-            this.isThinking = (this.currentEmotion === 'thinking' || this.currentEmotion === 'analyzing' || this.currentEmotion === 'focused');
+            // Processing indicators follow real pipeline state, never a
+            // lingering emotion tag after the assistant has finished speaking.
+            this.isThinking = this.currentState === 'processing' && !this.isSpeaking;
 
             // --- BLINK ---
             if (!this.isBlinking) {
@@ -378,6 +386,22 @@
                 }
             }
 
+            // Use the real Piper WAV RMS envelope, if present.
+            if (this.isSpeaking && this.activeTtsId) {
+                const elapsed = (performance.now() - this.envelopeStartedAt) / 1000;
+                if (this.envelopeDuration && elapsed > this.envelopeDuration + 2) {
+                    this.endPlayback({ tts_id: this.activeTtsId, status: 'timeout' });
+                } else if (this.envelope.length) {
+                    const bin = Math.min(this.envelope.length - 1,
+                        Math.floor(Math.max(0, elapsed) /
+                        Math.max(0.01, this.envelopeDuration) * this.envelope.length));
+                    this.envelopeLevel = this.lerp(this.envelopeLevel,
+                        this.envelope[bin] || 0, 0.38);
+                }
+            } else {
+                this.envelopeLevel = this.lerp(this.envelopeLevel, 0, 0.12);
+            }
+
             // Waveform fade
             if (this.isSpeaking) {
                 this.waveformOpacity = Math.min(1, this.waveformOpacity + 0.1);
@@ -393,7 +417,8 @@
                     const wave1 = Math.sin(this.time * 0.1 + bar.phase) * 0.4;
                     const wave2 = Math.sin(this.time * 0.15 + i * 0.2) * 0.3;
                     const wave3 = Math.sin(this.time * 0.08 + i * 0.5) * 0.3;
-                    bar.targetHeight = 3 + (wave1 + wave2 + wave3 + 1) * 8.5;
+                    bar.targetHeight = 3 + (this.activeTtsId
+                        ? this.envelopeLevel * 24 : (wave1 + wave2 + wave3 + 1) * 8.5);
                 } else {
                     bar.targetHeight = 3;
                 }
@@ -784,7 +809,73 @@
         }
 
         setSpeaking(active, text = '') {
-            this.isSpeaking = active;
+            if (this.activeTtsId) return;
+            this.isSpeaking = Boolean(active);
+        }
+
+        _setLiveStatus(label, detail) {
+            const status = document.getElementById('avatar-live-label');
+            const voice = document.getElementById('avatar-voice-indicator');
+            if (status) status.textContent = label;
+            if (voice) voice.textContent = detail || label;
+        }
+
+        applyPipelineState(state, turnId = null) {
+            if (turnId && this.activeTurnId && turnId !== this.activeTurnId
+                    && state === 'idle') return;
+            if (turnId) this.activeTurnId = turnId;
+            const phase = String(state || 'idle').toLowerCase();
+            const label = {
+                alert: 'AWAKE', listening: 'LISTENING', processing: 'TRANSCRIBING',
+                thinking: 'THINKING', responding: 'RESPONDING', speaking: 'SPEAKING',
+                error: 'ERROR', idle: 'STANDBY'
+            }[phase] || 'STANDBY';
+            this._setLiveStatus(label);
+            this.setAttentionState(
+                phase === 'alert' || phase === 'listening' ? 'listening' : 'relaxed'
+            );
+            this.currentState = ['processing', 'thinking', 'responding'].includes(phase)
+                ? 'processing' : 'idle';
+            this.isThinking = phase === 'thinking';
+            if (phase === 'idle' || phase === 'error') {
+                this.endPlayback({ tts_id: this.activeTtsId, status: phase });
+                this.isSpeaking = false;
+                this.activeTurnId = null;
+            }
+        }
+
+        startPlayback(data = {}) {
+            if (!data.tts_id) return;
+            this.activeTtsId = data.tts_id;
+            this.activeTurnId = data.turn_id || this.activeTurnId;
+            this.envelope = Array.isArray(data.envelope)
+                ? data.envelope.slice(0, 450).map(v =>
+                    Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0) : [];
+            this.envelopeDuration = Math.max(0, Math.min(45, Number(data.duration) || 0));
+            this.envelopeStartedAt = performance.now();
+            this.envelopeLevel = 0;
+            this.isSpeaking = true;
+            this.isThinking = false;
+            this.currentState = 'idle';
+            this._setLiveStatus('SPEAKING', 'AUDIO PLAYBACK');
+        }
+
+        endPlayback(data = {}) {
+            if (data.tts_id && this.activeTtsId && data.tts_id !== this.activeTtsId) {
+                return;
+            }
+            if (!this.activeTtsId && !this.isSpeaking) return;
+            this.activeTtsId = null;
+            this.envelope = [];
+            this.envelopeLevel = 0;
+            this.envelopeDuration = 0;
+            this.isSpeaking = false;
+            this._setLiveStatus('STANDBY', 'VOICE STANDBY');
+        }
+
+        setWakePhrase(phrase) {
+            const label = document.getElementById('avatar-wake-phrase');
+            if (label && phrase) label.textContent = 'WAKE: ' + String(phrase).toUpperCase();
         }
 
         setState(state) {
@@ -796,33 +887,18 @@
         }
 
         setAttentionState(state) {
-            // 'focused', 'listening', 'alert', 'relaxed'
             this.attentionState = state;
-
-            if (state === 'listening') {
-                this.coreRadius = 55; // Expand slightly
-            } else {
-                this.coreRadius = 50;
-            }
+            this.coreRadius = state === 'listening' ? 55 : 50;
         }
 
         updateFromChatMessage(role, text) {
+            // Text displayed on the dashboard is not actual audio playback.
             if (role === 'user') {
                 this.setAttentionState('listening');
-                this.isSpeaking = false;
+                this.currentState = 'processing';
             } else if (role === 'assistant') {
                 this.setAttentionState('relaxed');
-                this.isSpeaking = true;
-
-                // Auto-stop speaking after estimated reading time
-                if (this._speakTimeout) clearTimeout(this._speakTimeout);
-                const wordCount = (text || '').split(/\s+/).length;
-                const readTimeMs = Math.max(2000, wordCount * 200);
-                this._speakTimeout = setTimeout(() => {
-                    if (this.isSpeaking) {
-                        this.isSpeaking = false;
-                    }
-                }, readTimeMs);
+                this.currentState = 'idle';
             }
         }
 
@@ -839,11 +915,14 @@
 
         getDiagnostics() {
             return {
-                modelLoaded: true,
+                modelLoaded: false, // procedural hologram, not a 3D GLB
                 renderer: 'Canvas2D',
+                avatarMode: 'procedural_hologram',
                 fps: this.fps,
                 currentEmotion: this.currentEmotion,
                 isSpeaking: this.isSpeaking,
+                activeTtsId: this.activeTtsId,
+                envelopeLevel: this.envelopeLevel,
                 isThinking: this.isThinking,
                 attentionState: this.attentionState,
                 particleCount: this.particles.length,
@@ -896,6 +975,10 @@
         window.avatarRenderer = {
             setEmotion: avatar.setEmotion.bind(avatar),
             setSpeaking: avatar.setSpeaking.bind(avatar),
+            startPlayback: avatar.startPlayback.bind(avatar),
+            endPlayback: avatar.endPlayback.bind(avatar),
+            applyPipelineState: avatar.applyPipelineState.bind(avatar),
+            setWakePhrase: avatar.setWakePhrase.bind(avatar),
             setState: avatar.setState.bind(avatar),
             onStreamToken: avatar.onStreamToken.bind(avatar),
             setAttentionState: avatar.setAttentionState.bind(avatar),

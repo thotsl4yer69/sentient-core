@@ -1,4 +1,4 @@
-name: Sentient Core source and AIRI card checks
+name: Sentient Core source and unit checks
 on:
   push:
     branches: [main]
@@ -21,6 +21,12 @@ jobs:
       - name: Compile Python source without importing device services
         run: python -m compileall -q sentient services tools tests
       - name: Install isolated test runner
-        run: python -m pip install pytest
-      - name: Validate AIRI package contract and round-trip export
-        run: python -m pytest -q tests/unit/test_airi_card.py
+        run: python -m pip install pytest numpy
+      - name: Validate AIRI dashboard JavaScript syntax
+        run: |
+          node --check interfaces/web_chat/static/avatar-hologram.js
+          node --input-type=module --check < interfaces/web_chat/static/app.js
+          node --input-type=module --check < interfaces/web_chat/static/panels/avatar.js
+          node --input-type=module --check < interfaces/web_chat/static/panels/chat.js
+      - name: Validate AIRI package and voice reliability
+        run: python -m pytest -q tests/unit

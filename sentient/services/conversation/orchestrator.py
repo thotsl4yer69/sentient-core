@@ -48,6 +48,7 @@ from sentient.config import get_config
 from sentient.common.service_base import SentientService
 from sentient.common.logging import setup_logging
 from sentient.common import mqtt_topics
+from sentient.common.voice_timing import voice_stage
 from sentient.services.conversation.system_tools import SystemTools
 
 
@@ -143,6 +144,7 @@ class ConversationOrchestrator(SentientService):
 
         # Conversation history per user (for LLM context)
         self.conversation_histories: Dict[str, List[Dict[str, str]]] = {}
+        self._user_turn_locks: Dict[str, asyncio.Lock] = {}
 
         # Circuit breaker state: tracks consecutive failures per service
         self._circuit_failures: Dict[str, int] = {
@@ -499,22 +501,17 @@ class ConversationOrchestrator(SentientService):
             self.logger.error(f"Failed to retrieve world state: {e}")
             return {}
 
-    # Compiled regex patterns for deep contemplation detection
+    # Multiple LLM calls are prohibitively slow on a small Jetson model.
+    # Deep contemplation now requires explicit user intent instead of
+    # ordinary emotional/support questions (which remain fast but empathic).
     _DEEP_PATTERNS = re.compile(
-        r"i(?:'m| am) (?:stressed|worried|sad|lonely|scared|struggling)|"
-        r"i feel\b|"
-        r"how should i\b|what should i do\b|am i doing the right|"
-        r"what do you think about\b|i need advice\b|help me understand\b|"
-        r"meaning of\b|what is consciousness\b|do you think\b|"
-        r"what'?s the point\b|why do we\b|purpose of life\b|what matters\b|"
-        r"tell me about yourself\b|what do you really think\b|"
-        r"be honest with me\b|your honest opinion\b|what are you feeling\b|"
-        r"do you care about me\b|are we friends\b|what am i to you\b|do you love\b",
-        re.IGNORECASE
+        r"\b(?:think deeply|deep contemplate|deep contemplation|"
+        r"take your time and think|full deep analysis|use deep mode)\b",
+        re.IGNORECASE,
     )
 
     def _should_deep_contemplate(self, user_text: str) -> bool:
-        """Return True if the query warrants full multi-voice contemplation."""
+        """Opt in to slower multi-perspective inference only when asked."""
         return bool(self._DEEP_PATTERNS.search(user_text))
 
     async def _generate_response(
@@ -626,6 +623,7 @@ class ConversationOrchestrator(SentientService):
 
         try:
             full_text = []
+            first_token_seen = False
             async with self.http_session.post(
                 f"{self.contemplation_url}/generate/stream",
                 json=request_data,
@@ -641,6 +639,10 @@ class ConversationOrchestrator(SentientService):
                         token = data.get("token", "")
                         done = data.get("done", False)
                         if token:
+                            if not first_token_seen:
+                                voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                                            "llm_first_token")
+                                first_token_seen = True
                             full_text.append(token)
                             # Publish partial token for progressive display
                             await self.mqtt_publish(
@@ -790,13 +792,16 @@ class ConversationOrchestrator(SentientService):
     ):
         """Publish response to all appropriate output channels"""
         try:
+            voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                        "chat_publishing")
             # 1. Publish to chat output
             chat_payload = {
                 'text': response.text,
                 'user': context.user_id,
                 'timestamp': time.time(),
                 'conversation_id': context.conversation_id,
-                'turn': context.turn_number
+                'turn': context.turn_number,
+                'turn_id': (context.metadata or {}).get('turn_id')
             }
             if suggestions:
                 chat_payload['suggestions'] = suggestions
@@ -833,9 +838,12 @@ class ConversationOrchestrator(SentientService):
                     mqtt_topics.TTS_SPEAK,
                     {
                         'text': response.text,
-                        'emotion': response.emotion or 'neutral'
+                        'emotion': response.emotion or 'neutral',
+                        'turn_id': (context.metadata or {}).get('turn_id')
                     }
                 )
+                voice_stage(self.logger, (context.metadata or {}).get("turn_id"),
+                            "tts_request_sent")
                 self.logger.debug("Published to TTS")
 
             self.logger.info(f"Response delivered to {context.user_id}: {response.text[:50]}...")
@@ -879,7 +887,8 @@ class ConversationOrchestrator(SentientService):
         user_id: str = "unknown",
         source: InputSource = InputSource.TEXT_CHAT,
         voice_mode: bool = False,
-        wake_word_triggered: bool = False
+        wake_word_triggered: bool = False,
+        turn_id: Optional[str] = None
     ):
         """
         Main conversation processing pipeline
@@ -895,6 +904,7 @@ class ConversationOrchestrator(SentientService):
         8. Store interaction in memory
         9. Update conversation state
         """
+        voice_stage(self.logger, turn_id, "conversation_processing_started")
         # Update state
         await self._update_state(ConversationState.PROCESSING)
 
@@ -919,7 +929,8 @@ class ConversationOrchestrator(SentientService):
                 conversation_id=conversation_id,
                 turn_number=self.conversation_counter,
                 voice_mode=voice_mode,
-                wake_word_triggered=wake_word_triggered
+                wake_word_triggered=wake_word_triggered,
+                metadata={"turn_id": turn_id} if turn_id else {}
             )
 
             self.logger.info(f"Processing input from {user_id} ({source.value}): {user_text}")
@@ -934,6 +945,35 @@ class ConversationOrchestrator(SentientService):
             self.active_conversations[conversation_id] = context
             self.last_activity[user_id] = time.time()
 
+            # Deterministic, low-latency skills do not need memory retrieval,
+            # LLM prefill, or a second LLM call. Send the executed result,
+            # rather than asking a model to invent a success confirmation.
+            direct_intent = self.system_tools.detect_intent(user_text)
+            if direct_intent and direct_intent[0] in {"clock", "home_assistant", "skills"}:
+                await self._update_state(ConversationState.RESPONDING)
+                category, command = direct_intent
+                direct_text = await self.system_tools.execute(
+                    category, command, user_text, user_id=user_id
+                )
+                response = ConversationResponse(
+                    text=direct_text, should_speak=voice_mode
+                )
+                await self._publish_response(context, response)
+                voice_stage(self.logger, turn_id, "direct_action_complete")
+                self.conversation_histories.setdefault(user_id, []).extend([
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": direct_text},
+                ])
+                self.conversation_histories[user_id] = (
+                    self.conversation_histories[user_id][-20:]
+                )
+                self.active_conversations.pop(conversation_id, None)
+                await self._update_state(
+                    ConversationState.VOICE_MODE if voice_mode
+                    else ConversationState.LISTENING
+                )
+                return
+
             # Steps 0-2: Fetch all context in parallel (independent calls)
             mood, core_memory, memories, world_state = await asyncio.gather(
                 self._get_mood(),
@@ -941,6 +981,7 @@ class ConversationOrchestrator(SentientService):
                 self._get_relevant_memories(user_text, user_id),
                 self._get_world_state(),
             )
+            voice_stage(self.logger, turn_id, "context_ready")
             mood_context = self._mood_to_context(mood)
             core_facts = self._format_core_facts(core_memory)
             self.logger.debug(f"Retrieved {len(memories)} relevant memories")
@@ -962,7 +1003,7 @@ class ConversationOrchestrator(SentientService):
                 if intent:
                     category, command = intent
                     self.logger.info(f"System tool detected: {category}/{command}")
-                    tool_output = await self.system_tools.execute(category, command, user_text)
+                    tool_output = await self.system_tools.execute(category, command, user_text, user_id=user_id)
                     tool_context = self.system_tools.format_for_prompt(
                         f"{category}/{command}", tool_output
                     )
@@ -997,6 +1038,7 @@ class ConversationOrchestrator(SentientService):
             # Step 3: Generate response
             response_start = time.time()
             await self._update_state(ConversationState.RESPONDING)
+            voice_stage(self.logger, turn_id, "llm_started")
             if deep_contemplate:
                 self.logger.info("Deep contemplation mode activated")
                 await self.mqtt_publish(mqtt_topics.PERSONA_STATE, {
@@ -1015,6 +1057,7 @@ class ConversationOrchestrator(SentientService):
                     system_context=system_context
                 )
 
+            voice_stage(self.logger, turn_id, "llm_complete")
             # Append assistant response to history
             user_history.append({"role": "assistant", "content": response.text})
 
@@ -1027,6 +1070,7 @@ class ConversationOrchestrator(SentientService):
 
             # Step 4: Publish response
             await self._publish_response(context, response, suggestions=suggestions)
+            voice_stage(self.logger, turn_id, "response_published")
 
             # Steps 4.5-6: Post-response tasks in parallel (independent)
             detected_emotion = response.emotion or self._detect_emotion_from_text(response.text)
@@ -1047,6 +1091,7 @@ class ConversationOrchestrator(SentientService):
             self.logger.info(f"Conversation turn {context.turn_number} complete")
 
         except Exception as e:
+            voice_stage(self.logger, turn_id, "conversation_error", status="error")
             self.logger.error(f"Error processing input: {e}", exc_info=True)
             await self._update_state(ConversationState.ERROR)
 
@@ -1411,12 +1456,16 @@ class ConversationOrchestrator(SentientService):
             self.logger.warning("Received empty chat message")
             return
 
-        await self.process_input(
-            user_text=user_text,
-            user_id=user_id,
-            source=InputSource.TEXT_CHAT,
-            voice_mode=False
-        )
+        # Bounded MQTT dispatch permits parallel users; do not interleave
+        # mutations of conversation history from the same user.
+        lock = self._user_turn_locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            await self.process_input(
+                user_text=user_text,
+                user_id=user_id,
+                source=InputSource.TEXT_CHAT,
+                voice_mode=False
+            )
 
     async def handle_wake_word(self, message: Dict[str, Any]):
         """Handle wake word detection"""
@@ -1449,15 +1498,19 @@ class ConversationOrchestrator(SentientService):
             self.logger.warning("Received empty voice transcription")
             return
 
+        voice_stage(self.logger, message.get("turn_id"), "conversation_received")
         self.logger.info(f"Voice transcription (confidence: {confidence:.2f}): {user_text}")
 
-        await self.process_input(
-            user_text=user_text,
-            user_id=user_id,
-            source=InputSource.VOICE_TRANSCRIPTION,
-            voice_mode=True,
-            wake_word_triggered=(self.state == ConversationState.VOICE_MODE)
-        )
+        lock = self._user_turn_locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            await self.process_input(
+                user_text=user_text,
+                user_id=user_id,
+                source=InputSource.VOICE_TRANSCRIPTION,
+                voice_mode=True,
+                wake_word_triggered=(self.state == ConversationState.VOICE_MODE),
+                turn_id=message.get("turn_id")
+            )
 
     async def handle_tts_control(self, message: dict):
         """Handle TTS toggle control from web UI or other sources"""

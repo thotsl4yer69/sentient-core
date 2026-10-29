@@ -130,10 +130,23 @@ function handleMessage(data) {
         window.avatarRenderer.processPhonemes({ phonemes: data.phonemes, duration: data.duration });
       }
       break;
+    case 'wake_detected':
+      window.avatarRenderer?.setWakePhrase?.(data.phrase);
+      window.avatarRenderer?.applyPipelineState?.('alert');
+      break;
+    case 'tts_started':
+      window.avatarRenderer?.startPlayback?.(data);
+      break;
+    case 'tts_completed':
+      window.avatarRenderer?.endPlayback?.(data);
+      break;
+    case 'avatar_state':
+      window.avatarRenderer?.applyPipelineState?.(data.state, data.turn_id);
+      break;
     case 'speaking':
-      if (window.avatarRenderer?.setSpeaking) {
-        window.avatarRenderer.setSpeaking(data.active, data.text || '');
-      }
+      // Older bridge compatibility. Do not override a newer turn-correlated
+      // playback sequence with stale generic speaking messages.
+      window.avatarRenderer?.setSpeaking?.(data.active, data.text || '');
       break;
     case 'mqtt_status':
       if (data.status === 'disconnected') showToast('MQTT link lost', 'warning');

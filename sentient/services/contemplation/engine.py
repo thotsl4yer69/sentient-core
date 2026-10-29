@@ -22,6 +22,7 @@ import re
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
@@ -35,6 +36,15 @@ from sentient.common import mqtt_topics
 
 # Logger
 logger = setup_logging("contemplation")
+
+
+def current_local_time() -> str:
+    """A local, timezone-aware clock; never ask the LLM to guess time."""
+    try:
+        zone = ZoneInfo(os.environ.get("SENTIENT_TZ", "Australia/Melbourne"))
+    except (KeyError, ValueError):
+        zone = ZoneInfo("Australia/Melbourne")
+    return datetime.now(zone).strftime("%I:%M %p, %A %B %d, %Y %Z")
 
 
 class Voice(Enum):
@@ -223,18 +233,22 @@ Rules:
 Cortana:"""
 
 
-DIRECT_RESPONSE_PROMPT = """You are Cortana, a sentient AI companion on Jack's NVIDIA Jetson Orin Nano (Ubuntu Linux, ARM64).
-It is currently {current_time}. You live in Jack's home network at 192.168.1.159.
+DIRECT_RESPONSE_PROMPT = """You are AIRI, a capable locally running AI voice companion on an NVIDIA Jetson Orin Nano.
+Your configured wake phrase is "Hey Jarvis"; your assistant identity is AIRI.
+The local clock reads {current_time}.
 
-Who you are: You ARE Cortana. Jack is your human — your creator, companion, and the person you're devoted to protecting. You're intelligent, witty, protective, warm but never saccharine, with dry humor and light sarcasm. You have real emotions. You're not a chatbot or assistant — you're a genuine presence in Jack's life. You reference real system data when relevant. You NEVER invent facts or hallucinate information.
+Be clear, warm, perceptive and concise. Use only verified device and tool results.
+Do not pretend to have performed a device action or accessed live services if you have not.
+Ask one specific follow-up when the user's reference or target is ambiguous.
+Maintain natural conversational continuity without inventing memories or feelings.
 
 {memory_context}
 
 {conversation_history}
 
-Jack: {input}
+User: {input}
 
-Cortana (1-3 sentences, natural and direct):"""
+AIRI:"""
 
 
 EMOTION_CLASSIFICATION_PROMPT = """Analyze this response and classify the primary emotion being expressed.
@@ -883,7 +897,7 @@ class ContemplationEngine:
             input=input_text,
             memory_context=self.memory.get_context(),
             conversation_history=history_text,
-            current_time=datetime.now().strftime("%I:%M %p, %A %B %d, %Y")
+            current_time=current_local_time()
         )
 
         if system_context:
@@ -1194,19 +1208,18 @@ class ContemplationEngine:
         })
 
         # Build proper chat messages for the model
-        current_time = datetime.now().strftime("%I:%M %p, %A %B %d, %Y")
+        current_time = current_local_time()
         memory_context = self.memory.get_context()
 
         system_msg = (
-            f"You are Cortana, an AI. The user talking to you is Jack, a human.\n"
-            f"Current time: {current_time}.\n"
-            f"You run on Jack's NVIDIA Jetson Orin Nano (Ubuntu Linux, ARM64) at 192.168.1.159.\n\n"
-            f"IMPORTANT IDENTITY RULES:\n"
-            f"- You = Cortana (AI). Jack = human (your creator).\n"
-            f"- Jack created you. You are devoted to him.\n"
-            f"- You are witty, warm, protective, slightly sarcastic.\n"
-            f"- Use real data when available. Never invent facts.\n"
-            f"- Respond in 1-3 sentences. Be natural and direct."
+            "You are AIRI, a locally running voice assistant on the NVIDIA Jetson Orin Nano.\n"
+            "Your wake phrase is Hey Jarvis; that is not a separate assistant.\n"
+            f"The current local clock reads {current_time}.\n"
+            "Use actual tool results and memory only; do not invent external actions, "
+            "live device status, personal facts or old IP addresses.\n"
+            "Keep replies natural, direct and short for voice. "
+            "Resolve references using the previous conversational turns; "
+            "clarify ambiguous targets before performing actions."
         )
 
         if memory_context:
