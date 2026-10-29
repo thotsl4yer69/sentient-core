@@ -1,3 +1,5 @@
+import ast
+import hashlib
 import importlib.util
 import json
 import os
@@ -248,6 +250,23 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'manifest'):
             self.apply()
         self.assertFalse((self.base / 'elsewhere.py').exists())
+
+
+class AthenaBootstrapTests(unittest.TestCase):
+    def remote_source(self):
+        script = (PACKAGE / 'Deploy-OrinVoiceRecovery.ps1').read_text(encoding='utf-8')
+        return script.split("$remoteScript = @'\n", 1)[1].split("\n'@", 1)[0]
+
+    def test_embedded_remote_python_compiles(self):
+        compile(self.remote_source(), '<Athena remote deployment>', 'exec')
+
+    def test_every_remote_download_is_pinned_to_the_tested_package(self):
+        tree = ast.parse(self.remote_source())
+        expected = next(ast.literal_eval(node.value) for node in tree.body
+                        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'EXPECTED' for target in node.targets))
+        self.assertEqual(set(expected), {'audio_devices.py', 'handsfree.py', 'handsfree-controls.js', 'install.py', 'manifest.json'})
+        for name, digest in expected.items():
+            self.assertEqual(hashlib.sha256((PACKAGE / name).read_bytes()).hexdigest(), digest, name)
 
 
 if __name__ == '__main__':

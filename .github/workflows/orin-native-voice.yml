@@ -27,3 +27,10 @@ jobs:
         run: python -m unittest discover -s deploy/orin-native-voice/tests -p 'test_*.py' -v
       - name: Exercise kiosk voice status
         run: node --test deploy/orin-native-voice/tests/status.test.cjs
+      - name: Check Athena PowerShell deployment syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'deploy/orin-native-voice/Deploy-OrinVoiceRecovery.ps1').Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }

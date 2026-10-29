@@ -12,6 +12,18 @@ The target is the customized `/mnt/orin-ai/orin` runtime owned by the existing `
 
 The previous deployment record identifies **Hey Honey** and the **Neon Siren day/night VRMs** as active. This package preserves that voice path, identity, model selection, avatar assets, telemetry and cancellation behavior. There are no model downloads or new Python dependencies.
 
+## Apply from Athena with the existing SSH key
+
+Run the PowerShell deployment helper from an ordinary Athena PowerShell session:
+
+```powershell
+& .\deploy\orin-native-voice\Deploy-OrinVoiceRecovery.ps1
+```
+
+The helper is provided in this directory. It uses the existing `orin_backup_ed25519` key and known-host records, pins the tested package to commit `228a212e75e92a24e08df080a25f8442715b31f9`, verifies every download, checks the expected `nano-desktop` host, and then runs preflight/apply. It does not disable host verification, prompt for a password, or change network permissions. The terminal prints the actual receipt and current voice status and saves them next to the helper. It can also target the existing Tailscale IP with `-Target 100.120.166.31`.
+
+This helper is for a user-run PowerShell session. The assistant has not executed it around the task's SSH network restriction.
+
 ## Verify and apply on the Nano
 
 From a checkout containing this directory:
@@ -31,4 +43,4 @@ For rollback, pass the receipt path printed by apply to `python3 deploy/orin-nat
 
 Local tests exercise the actual patched listener methods with audio IO boundaries simulated, plus PCM health, device choice, real filesystem installation, startup-failure rollback, exact-byte restoration and preservation of later edits. Node executes the actual control script in a minimal DOM to verify the four status presentations.
 
-**Not deployed in this change.** Desktop Commander had no connected devices and direct SSH was blocked before login. The October 27 deployment report is historical evidence, not a current health check. No new Nano latency, microphone or Home Assistant success is claimed. Physical acceptance still requires a real USB unplug/replug test, a spoken Hey Honey turn and confirmation that the configured Home Assistant endpoint is available.
+**Not deployed in this change.** Desktop Commander had no connected devices and direct SSH was blocked before login. A later check through Athena's browser reached the Nano dashboard login page, confirming that dashboard reachability is separate from this task's SSH restriction. The existing fleet relay had six unclaimed commands from September 30/October 1 and no results. The October 27 deployment report is historical evidence, not a current health check. No new Nano latency, microphone or Home Assistant success is claimed. Physical acceptance still requires a real USB unplug/replug test, a spoken Hey Honey turn and confirmation that the configured Home Assistant endpoint is available.
