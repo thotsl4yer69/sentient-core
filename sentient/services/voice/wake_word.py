@@ -2,18 +2,19 @@
 Wake Word Detection Service for Sentient Core v2
 
 Uses OpenWakeWord to detect wake words with sub-500ms latency.
-Threaded PyAudio capture feeds an asyncio queue for detection processing.
+Threaded PyAudio capture feeds a bounded queue for detection processing.
 
 Architecture:
 - Extends SentientService for MQTT lifecycle and config
 - Audio capture runs in a daemon thread (PyAudio is synchronous)
-- Detection loop runs async, consuming from the audio queue
+- Detection loop runs async, consuming the freshest queued audio
 - Publishes WAKE_WORD_DETECTED on successful detection with cooldown
 """
 
 import asyncio
 import time
 import threading
+import queue
 from typing import Optional
 
 import numpy as np
@@ -27,6 +28,7 @@ from sentient.common import mqtt_topics
 # Audio constants
 SAMPLE_RATE = 16000       # OpenWakeWord expects 16kHz
 CHUNK_SIZE = 1280         # 80ms chunks for low latency (16000 * 0.08)
+MAX_QUEUED_CHUNKS = 5     # At most 400ms of waiting audio, excluding in-flight inference
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 
@@ -58,11 +60,10 @@ class WakeWordService(SentientService):
 
         # Threading for audio capture
         self.audio_thread: Optional[threading.Thread] = None
-        self.audio_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self.audio_queue: queue.Queue = queue.Queue(maxsize=MAX_QUEUED_CHUNKS)
 
         # Detection state
-        self.last_detection_time: float = 0
+        self.last_detection_time: float = float("-inf")
 
     def _initialize_audio(self) -> bool:
         """Initialize PyAudio stream for microphone capture."""
@@ -120,7 +121,8 @@ class WakeWordService(SentientService):
         """Blocking audio capture running in a daemon thread.
 
         Reads chunks from PyAudio and pushes numpy arrays into the
-        asyncio queue via run_coroutine_threadsafe.
+        bounded thread-safe queue. Drop the oldest waiting chunk if inference
+        falls behind; never accumulate pending asyncio put coroutines.
         """
         self.logger.info("Audio capture thread started")
 
@@ -132,14 +134,18 @@ class WakeWordService(SentientService):
                     )
                     audio_array = np.frombuffer(audio_data, dtype=np.int16)
 
-                    if self._loop:
-                        asyncio.run_coroutine_threadsafe(
-                            self.audio_queue.put(audio_array),
-                            self._loop,
-                        )
+                    try:
+                        self.audio_queue.put_nowait(audio_array)
+                    except queue.Full:
+                        try:
+                            self.audio_queue.get_nowait()
+                        except queue.Empty:
+                            pass  # The detection loop consumed it first.
+                        self.audio_queue.put_nowait(audio_array)
                 except Exception as e:
                     if self._running:
                         self.logger.error(f"Audio capture error: {e}")
+                        time.sleep(0.1)  # Avoid a busy loop on a disconnected mic.
         except Exception as e:
             self.logger.error(f"Audio thread fatal error: {e}")
         finally:
@@ -152,8 +158,8 @@ class WakeWordService(SentientService):
         try:
             while self._running:
                 try:
-                    audio_array = await asyncio.wait_for(
-                        self.audio_queue.get(), timeout=1.0
+                    audio_array = await asyncio.to_thread(
+                        self.audio_queue.get, True, 1.0
                     )
 
                     prediction = self.oww_model.predict(audio_array)
@@ -166,7 +172,7 @@ class WakeWordService(SentientService):
                             await self._publish_detection(score)
                             break  # Only publish once per chunk
 
-                except asyncio.TimeoutError:
+                except queue.Empty:
                     continue
                 except Exception as e:
                     self.logger.error(f"Detection error: {e}")
@@ -178,7 +184,7 @@ class WakeWordService(SentientService):
 
     async def _publish_detection(self, confidence: float):
         """Publish a wake word detection event via MQTT with cooldown."""
-        current_time = time.time()
+        current_time = time.monotonic()
 
         if current_time - self.last_detection_time < self.cooldown_seconds:
             self.logger.debug(
@@ -189,7 +195,7 @@ class WakeWordService(SentientService):
         self.last_detection_time = current_time
 
         payload = {
-            "timestamp": current_time,
+            "timestamp": time.time(),
             "confidence": confidence,
             "service": "wake_word",
         }
@@ -208,8 +214,6 @@ class WakeWordService(SentientService):
 
         if not self._initialize_model():
             raise RuntimeError("Model initialization failed")
-
-        self._loop = asyncio.get_running_loop()
 
         # Start audio capture in a daemon thread
         self.audio_thread = threading.Thread(
