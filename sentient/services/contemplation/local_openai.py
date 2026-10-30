@@ -53,17 +53,17 @@ class LocalOpenAIClient:
     ) -> str:
         messages = ([{"role": "system", "content": system}] if system else [])
         messages.append({"role": "user", "content": prompt})
-        session = await self._get_session()
-        payload: Dict[str, Any] = {
-            "model": await self._resolve_model(),
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
-        if stop:
-            payload["stop"] = stop
         try:
+            session = await self._get_session()
+            payload: Dict[str, Any] = {
+                "model": await self._resolve_model(),
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": False,
+            }
+            if stop:
+                payload["stop"] = stop
             async with session.post(
                 f"{self.host}/v1/chat/completions",
                 json=payload,
@@ -88,17 +88,17 @@ class LocalOpenAIClient:
         timeout: float = 120.0,
         stop: Optional[List[str]] = None,
     ):
-        session = await self._get_session()
-        payload: Dict[str, Any] = {
-            "model": await self._resolve_model(),
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-        if stop:
-            payload["stop"] = stop
         try:
+            session = await self._get_session()
+            payload: Dict[str, Any] = {
+                "model": await self._resolve_model(),
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": True,
+            }
+            if stop:
+                payload["stop"] = stop
             async with session.post(
                 f"{self.host}/v1/chat/completions",
                 json=payload,
@@ -152,3 +152,46 @@ class LocalOpenAIClient:
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
+
+
+class FailoverClient:
+    """Prefer local llama.cpp and retry the prior Ollama engine on a failed turn.
+
+    A streaming fallback happens only before the first output token; restarting
+    after partial output would duplicate or corrupt a spoken response.
+    """
+
+    def __init__(self, primary: LocalOpenAIClient, fallback):
+        self.primary = primary
+        self.fallback = fallback
+
+    async def generate(self, *args, **kwargs):
+        result = await self.primary.generate(*args, **kwargs)
+        if result:
+            return result
+        log.warning("Local model unavailable; retrying on existing Ollama")
+        return await self.fallback.generate(*args, **kwargs)
+
+    async def chat_stream(self, *args, **kwargs):
+        emitted = False
+        async for token in self.primary.chat_stream(*args, **kwargs):
+            emitted = True
+            yield token
+        if not emitted:
+            log.warning("Local streaming unavailable; retrying on existing Ollama")
+            async for token in self.fallback.chat_stream(*args, **kwargs):
+                yield token
+
+    async def generate_stream(self, *args, **kwargs):
+        emitted = False
+        async for token in self.primary.generate_stream(*args, **kwargs):
+            emitted = True
+            yield token
+        if not emitted:
+            log.warning("Local streaming unavailable; retrying on existing Ollama")
+            async for token in self.fallback.generate_stream(*args, **kwargs):
+                yield token
+
+    async def close(self):
+        await self.primary.close()
+        await self.fallback.close()
