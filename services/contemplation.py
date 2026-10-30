@@ -409,9 +409,12 @@ class ContemplationEngine:
         if backend == "openai":
             # Older /opt/sentient-core/services deployment path.
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-            from sentient.services.contemplation.local_openai import LocalOpenAIClient
-            self.ollama = LocalOpenAIClient(
-                os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
+            from sentient.services.contemplation.local_openai import LocalOpenAIClient, FailoverClient
+            self.ollama = FailoverClient(
+                LocalOpenAIClient(
+                    os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
+                ),
+                OllamaClient(self.config.ollama_host),
             )
         elif backend == "ollama":
             self.ollama = OllamaClient(self.config.ollama_host)
