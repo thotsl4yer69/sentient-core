@@ -21,7 +21,9 @@ bob haircut and eyebrows/eyelashes adapted from another CC0 MPFB figure.
 - **Format:** `.glb`, supported by Blender, Godot, Unity, Three.js and
   other glTF importers. The GLB is editable, not a proprietary or image-only file.
 - **File:** [ATHENA rigged GLB](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/27960480-95de-44de-b869-30080b584828.glb).
-- **Actual geometry preview:** [3D renderer screenshot](https://gcdn.picsart.com/editing-temp/2825d386-92d7-46cd-85df-48815ce03750.png) (temporary).
+- **Actual geometry preview:** [3D renderer screenshot](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/0876269d-9e26-420b-afc1-2b61d6e0c6f2.png).
+
+- **Real exported-model turntable video:** [ATHENA rotating GLB preview](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/7149c981-4d89-44f9-a8ba-7440f74d8887.mp4).
 
 This is a *functional rigged character prototype*, **not a photoreal 1:1
 reproduction** of ATHENA's concept sheet. There are no facial viseme morph
