@@ -639,8 +639,11 @@ class ContemplationEngine:
 
         # Initialize components
         if self.llm_backend == "openai":
-            from .local_openai import LocalOpenAIClient
-            self.ollama = LocalOpenAIClient(self.ollama_host)
+            from .local_openai import LocalOpenAIClient, FailoverClient
+            self.ollama = FailoverClient(
+                LocalOpenAIClient(self.ollama_host),
+                OllamaClient(cfg.ollama.host, num_ctx=cfg.ollama.num_ctx),
+            )
         else:
             self.ollama = OllamaClient(self.ollama_host, num_ctx=cfg.ollama.num_ctx)
         self.memory = MemoryStore(memory_file, self.max_memory_entries)
