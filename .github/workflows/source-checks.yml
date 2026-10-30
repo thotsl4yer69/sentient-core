@@ -30,3 +30,17 @@ jobs:
         run: |
           python -m pip install aiohttp
           python -m unittest discover -s tests/unit -p test_local_openai.py -v
+      - name: Validate rigged ATHENA installer and viewer
+        run: |
+          bash -n scripts/install-athena-avatar.sh
+          python - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          html = Path('interfaces/web_chat/static/athena.html').read_text()
+          scripts = re.findall(r'<script type="module">([\s\S]*?)</script>', html)
+          assert len(scripts) == 1
+          src = Path('/tmp/athena-viewer.mjs')
+          src.write_text(scripts[0])
+          subprocess.run(['node', '--check', str(src)], check=True)
+          assert './models/athena.glb' in html
+          PY
