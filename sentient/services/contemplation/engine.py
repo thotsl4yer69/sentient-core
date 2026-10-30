@@ -599,8 +599,15 @@ class ContemplationEngine:
         # Load central config
         cfg = get_config()
 
-        # Ollama configuration from central config
-        self.ollama_host = cfg.ollama.host
+        # Keep Ollama as the default until the local server is smoke-tested.
+        # SENTIENT_LLM_BACKEND=openai enables the Jetson llama.cpp sidecar.
+        self.llm_backend = os.environ.get("SENTIENT_LLM_BACKEND", "ollama").lower()
+        if self.llm_backend not in ("ollama", "openai"):
+            raise ValueError("SENTIENT_LLM_BACKEND must be 'ollama' or 'openai'")
+        self.ollama_host = (
+            os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
+            if self.llm_backend == "openai" else cfg.ollama.host
+        )
         self.model = cfg.ollama.model
         self.synthesis_model = cfg.ollama.model
 
@@ -631,7 +638,14 @@ class ContemplationEngine:
         personality_file = personality_dir / "cortana_core.txt"
 
         # Initialize components
-        self.ollama = OllamaClient(self.ollama_host, num_ctx=cfg.ollama.num_ctx)
+        if self.llm_backend == "openai":
+            from .local_openai import LocalOpenAIClient, FailoverClient
+            self.ollama = FailoverClient(
+                LocalOpenAIClient(self.ollama_host),
+                OllamaClient(cfg.ollama.host, num_ctx=cfg.ollama.num_ctx),
+            )
+        else:
+            self.ollama = OllamaClient(self.ollama_host, num_ctx=cfg.ollama.num_ctx)
         self.memory = MemoryStore(memory_file, self.max_memory_entries)
 
         # MQTT client for publishing

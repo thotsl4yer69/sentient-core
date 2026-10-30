@@ -405,7 +405,21 @@ class ContemplationEngine:
 
     def __init__(self, config: Optional[ContemplationConfig] = None):
         self.config = config or ContemplationConfig()
-        self.ollama = OllamaClient(self.config.ollama_host)
+        backend = os.environ.get("SENTIENT_LLM_BACKEND", "ollama").lower()
+        if backend == "openai":
+            # Older /opt/sentient-core/services deployment path.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from sentient.services.contemplation.local_openai import LocalOpenAIClient, FailoverClient
+            self.ollama = FailoverClient(
+                LocalOpenAIClient(
+                    os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
+                ),
+                OllamaClient(self.config.ollama_host),
+            )
+        elif backend == "ollama":
+            self.ollama = OllamaClient(self.config.ollama_host)
+        else:
+            raise ValueError("SENTIENT_LLM_BACKEND must be ollama or openai")
         self.memory = MemoryStore(
             self.config.memory_context_file,
             self.config.max_memory_entries
