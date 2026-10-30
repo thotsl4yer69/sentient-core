@@ -2,13 +2,19 @@
 
 Run: python3 -m unittest tests.unit.test_local_openai -v
 """
-import asyncio
-import json
+import importlib.util
 import unittest
+from pathlib import Path
 
 from aiohttp import web
 
-from sentient.services.contemplation.local_openai import LocalOpenAIClient
+# Load the small adapter directly: device-specific Sentient Core dependencies
+# are deliberately not installed in the hardware-independent CI job.
+module_path = Path(__file__).resolve().parents[2] / "sentient/services/contemplation/local_openai.py"
+spec = importlib.util.spec_from_file_location("local_openai_under_test", module_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+LocalOpenAIClient = module.LocalOpenAIClient
 
 
 class LocalOpenAITests(unittest.IsolatedAsyncioTestCase):
