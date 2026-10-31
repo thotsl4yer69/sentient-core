@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Download verified ATHENA skinned GLB locally, preserving existing orb UI.
+# Download verified ATHENA NIGHTFALL v2 skinned GLB locally, preserving existing orb UI.
 set -Eeuo pipefail
 BASE="${SENTIENT_ROOT:-/opt/sentient-core}"
 ASSET_DIR="${BASE}/interfaces/web_chat/static/models"
 FILE="${ASSET_DIR}/athena.glb"
-URL='https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/27960480-95de-44de-b869-30080b584828.glb'
-SHA256='965246a711760df5028c1b81ba03fe4d8638946d614f345ab39f3acd2bff67d2'
+URL='https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/7291dd86-fccb-48d0-8cf4-8eeb0b397193.glb'
+SHA256='dfa20cd758b1e15c73c085f8978f90f581b95889a3002a41db5f538ab0f360df'
 command -v curl >/dev/null || { echo 'curl required' >&2;exit 1; }
 [[ -d "${BASE}/interfaces/web_chat/static" ]] || { echo "Missing Sentient Core frontend: ${BASE}" >&2;exit 1; }
 mkdir -p "${ASSET_DIR}"
