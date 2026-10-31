@@ -1,41 +1,33 @@
-# ATHENA — real rigged female 3D companion
+# ATHENA NIGHTFALL — rigged 3D redesign
 
-**Asset revision:** 2026-10-31, GLB 8,891,316 bytes, SHA-256:
-`965246a711760df5028c1b81ba03fe4d8638946d614f345ab39f3acd2bff67d2`
+**Release:** 31 October 2026 · **13,020,640 bytes** · SHA-256:
+`dfa20cd758b1e15c73c085f8978f90f581b95889a3002a41db5f538ab0f360df`
 
-## What is actually built
+[Download the actual ATHENA NIGHTFALL GLB](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/7291dd86-fccb-48d0-8cf4-8eeb0b397193.glb)
 
-A genuine glTF 2.0 binary model, **not a rendered concept image**. Source
-anatomical mesh is a public-domain (CC0) MakeHuman model published by Innerscene;
-the 163-joint skeletal rig, vertex skin weights, facial/jaw/eye/finger bones,
-body topology and original bind data are retained. Customizations include
-skinned black/ivory cyber suit material regions, a cyan chest trim, a skinned
-bob haircut and eyebrows/eyelashes adapted from another CC0 MPFB figure.
+## Design revision
 
-- **Rig:** 163 bones including fingers, eyes, jaw, limbs, spine.
-- **Geometry:** approximately 118,575 triangles; 10 meshes.
-- **Materials:** 13 including embedded hair/eyebrow/eyelash textures and
-  standard PBR metallic/roughness suit finishes.
-- **Animation:** one `ATHENA_4s_idle_speech` glTF 4-second clip with subtle
-  head movement, jaw movement and arm microgesture.
-- **Format:** `.glb`, supported by Blender, Godot, Unity, Three.js and
-  other glTF importers. The GLB is editable, not a proprietary or image-only file.
-- **File:** [ATHENA rigged GLB](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/27960480-95de-44de-b869-30080b584828.glb).
-- **Actual geometry preview:** [3D renderer screenshot](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/0876269d-9e26-420b-afc1-2b61d6e0c6f2.png).
+The prior figure had a bulky white/black robot outfit, a fringe over her face, stiff arms, irregular exposed feet and a weak silhouette. This build replaces those with:
 
-- **Real exported-model turntable video:** [ATHENA rotating GLB preview](https://d2ol7oe51mr4n9.cloudfront.net/user_3J2eeA6Q5aKeLXqP7Sh07VXpkjX/7149c981-4d89-44f9-a8ba-7440f74d8887.mp4).
+- A waist- and hip-shaped, form-fitting obsidian satin bodysuit with a neckline exposing the collarbones and upper chest, plus discreet side waist cutouts.
+- Smoothly blended garment colour instead of jagged triangle-based colour cutoffs, patent dark lower-leg panels, fitted ankle-boot geometry, restrained metallic/violet detailing.
+- Clear face, swept-back textured ponytail, reworked eyelid/brow lines, skinned irises, pupils and glints, and warm rose lips.
+- Relaxed, slightly tilted rest pose rather than a rigid A-pose. All arm/hand/face bones remain available for retargeting.
 
-This is a *functional rigged character prototype*, **not a photoreal 1:1
-reproduction** of ATHENA's concept sheet. There are no facial viseme morph
-targets yet; the jaw bone provides a basic speech approximation. Existing
-original skinned-node parenting produces two Khronos validator warnings,
-not runtime errors. The model has been opened by a separate importer, and
-the import produced 113,695 indexed triangles. Further texturing/retopology,
-rigged motion testing and target-hardware load testing are not yet complete.
+**These are actual mesh, material, vertex-colour and skeletal changes**, not an AI picture.
 
-## Install on the Orin without disrupting the existing holographic orb
+## Delivered 3D data
 
-From an up-to-date checkout of Sentient Core:
+- glTF 2.0 binary .GLB with original **163 bones** (face, jaw, eyes, fingers, full body).
+- **19 mesh objects**, approximately **131,256 triangles** as checked by a separate importer; **18 PBR materials**, one embedded hair image texture and one four-second idle/speaking animation.
+- Original MakeHuman anatomical mesh and skin weights retained, with bespoke geometric modifications and vertex-colour clothing overlaid.
+- Fully self-contained binary asset; there are no externally referenced texture files.
+- The asset passed separate 3D model import and rendering. Khronos validation returned **two original source skinned-child parenting warnings**, no structural errors once animation sampler buffer targets and bounds were corrected.
+- Caveat: this is a substantially improved stylized 3D prototype. It is **not yet photorealistic** and lip-synchronisation currently uses a jaw joint rather than production phoneme blendshapes. Deformation in aggressive poses and performance on the actual Orin hardware are not yet verified.
+
+## Deploy on the Jetson Orin Nano
+
+Run from an updated Sentient Core checkout:
 
 ```bash
 cd /opt/sentient-core
@@ -43,24 +35,21 @@ git pull --ff-only
 bash scripts/install-athena-avatar.sh
 ```
 
-The installer downloads the GLB from the versioned CDN, checks SHA-256,
-validates the embedded glTF JSON and expected bones/clip, backs up an existing
-installation and atomically installs
-`interfaces/web_chat/static/models/athena.glb`.
+The installer downloads the revised file to
+`interfaces/web_chat/static/models/athena.glb`, validates its checksum,
+bone count and animation, backs up the previous GLB, and swaps the new file
+atomically. The existing original holographic avatar interface is untouched.
+The new 3D viewer is available at
+`http://<ORIN_IP>:3001/static/athena.html`.
 
-Open `http://<ORIN_IP>:3001/static/athena.html` in a browser. Drag/touch to
-orbit the live model. The page uses Three.js and subscribes to existing
-`/ws` speech events; the Test speaking button actuates the jaw locally.
-The original UI is unchanged. The Three.js modules currently load from
-jsDelivr, so the viewer requires connectivity until they are vendored.
+The viewer uses Three.js loaded from a CDN, meaning browser access to jsDelivr
+is currently required. This project commit does not imply that the physical
+Orin has been updated: device access is required for final deployment.
 
-No claim is made that the model or frontend has been installed on the physical
-Orin: hardware access was unavailable during authoring.
+## Licences / original CC0 models
 
-## Original CC0 geometry
+- [Innerscene rigged MakeHuman female](https://www.innerscene.com/tools/library/3d-parts/female-base-mesh-3d-person-rigged-a-pose-dba97ed5)
+- [Innerscene Amara character](https://www.innerscene.com/tools/library/3d-parts/amara-3d-person-standing-office-2a16c294) — ponytail and ankle-boot geometry
+- [Innerscene Sage character](https://www.innerscene.com/tools/library/3d-parts/sage-3d-person-woman-walking-a458e4c3) — evaluated as a previous design iteration
 
-- [Innerscene female base with 163-bone skeleton](https://www.innerscene.com/tools/library/3d-parts/female-base-mesh-3d-person-rigged-a-pose-dba97ed5)
-- [Innerscene Sage CC0 hairstyle source](https://www.innerscene.com/tools/library/3d-parts/sage-3d-person-woman-walking-a458e4c3)
-
-Both sources state CC0 public domain. Source geometric content was adapted,
-not falsely represented as custom sculpted photoreal geometry.
+Assets are public-domain CC0; preserve source credit in derivative project documentation for traceability.
