@@ -39,3 +39,7 @@ This is an authored MAZLABZ system developed with AI coding agents as part of th
 ## Portfolio takeaway
 
 The strongest evidence here is not a claim of senior ML research. It is **systems integration**: local inference, Linux services, voice, state, APIs, message buses and UI composed into a single edge-AI product.
+
+## Fleet reconciliation — 2 November 2026
+
+**Observed state:** Deployed Jetson prototype historically verified on 31 October (Ubuntu 22.04.5 / L4T R36.4.7, local MQTT/voice/LLM/dashboard/media). Connected `nano-desktop` was offline at 2 November review; current service/process status and exact installed revision remain unknown. The Oct 30–31 merged inference/rigged-avatar PRs (#10–#12) are **source/asset confirmed only**, not deployed on hardware. Open voice input/wake/older avatar work (#9, #6, #5, #2, #1) must be reconciled without disturbing existing runtime. Next: verify host identity and current working service baseline, record hashes/rollback and test deployment on actual Orin. See [fleet audit](https://github.com/thotsl4yer69/fleet/blob/main/FLEET_STATE_2026-11-02.md).
