@@ -81,7 +81,17 @@ case "${command}" in
         FILE="Nemotron-3.5-Bolt-E4B-Q4_K_M.gguf"
         CTX=2048
         ;;
-      *) die "Choose 'gemma' (recommended for 8GB) or 'nemotron' (larger alternative)" ;;
+      qwen-abliterated)
+        REPO="richardyoung/Qwen3-8B-Abliterated-GGUF"
+        FILE="qwen3-8b-abliterated-Q4_K_M.gguf"
+        CTX=2048
+        ;;
+      dolphin)
+        REPO="mradermacher/Dolphin3.0-Llama3.1-8B-GGUF"
+        FILE="Dolphin3.0-Llama3.1-8B.Q4_K_M.gguf"
+        CTX=2048
+        ;;
+      *) die "Choose gemma, nemotron, qwen-abliterated or dolphin" ;;
     esac
     if is_running; then die "Managed container is already running; use 'stop' to change models"; fi
     if command -v ollama >/dev/null && ollama ps 2>/dev/null | tail -n +2 | grep -q '[^[:space:]]'; then
@@ -176,6 +186,8 @@ Usage: sudo bash scripts/jetson-models.sh COMMAND
   check           Inspect JetPack, RAM, cache and Ollama usage
   start gemma     Launch Gemma 4 E2B Q4 (8GB default; llama.cpp)
   start nemotron  Launch Nemotron 3.5 Bolt E4B Q4 (heavier alternate)
+  start qwen-abliterated  Launch Qwen3 8B Abliterated Q4_K_M (8GB: trial only)
+  start dolphin    Launch Dolphin 3.0 Llama 3.1 8B Q4_K_M (8GB: trial only)
   logs            Inspect model/container download and warmup
   test            Verify model endpoint and real response
   activate        Opt in existing contemplation service, with rollback state
