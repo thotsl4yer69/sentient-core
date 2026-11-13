@@ -16,7 +16,7 @@ h1{font-size:24px;font-weight:550;letter-spacing:.2em;margin:0 0 4px}
 button{border:1px solid #356477;background:#102135ef;color:#cbf5fb;border-radius:9px;padding:11px 15px;cursor:pointer;font-size:13px}
 button:hover,button:focus-visible{outline:1px solid var(--cyan)}
 #spec{position:absolute;top:20px;right:20px;text-align:right;color:#8cabb9;font-size:11px;letter-spacing:.12em}
-#errors{color:#ffb6af;margin-top:8px;font-size:12px;white-space:pre-wrap}
+.live{margin-top:6px;color:#a7bfc7;border-color:#233c4b}.live.connected{color:#7fdeb5;border-color:#34574d}#errors{color:#ffb6af;margin-top:8px;font-size:12px;white-space:pre-wrap}
 @media(max-width:600px){#hud{left:12px;top:12px;max-width:65%}#spec{top:14px;right:12px;font-size:9px}h1{font-size:17px}button{padding:10px;font-size:12px}}
 </style>
 <script type="importmap">
@@ -25,7 +25,7 @@ button:hover,button:focus-visible{outline:1px solid var(--cyan)}
 </head>
 <body>
 <canvas id="stage" aria-label="Interactive 3D ATHENA female avatar"></canvas>
-<div id="hud"><h1>ATHENA</h1><p class="subtitle">Local companion / actual skinned GLB</p><div class="status" id="status">Loading rig...</div><div id="errors"></div></div>
+<div id="hud"><h1>ATHENA</h1><p class="subtitle">Local companion / actual skinned GLB</p><div class="status" id="status">Loading rig...</div><div class="status live" id="live" aria-live="polite">Avatar bridge: connecting</div><div id="errors"></div></div>
 <div id="spec">LOCAL ASSET<br>163 JOINTS · GLTF 2.0<br><span id="fps">— FPS</span></div>
 <div id="actions"><button id="idle">Idle animation</button><button id="speak">Test speaking</button><button id="rotate">Auto rotate</button><button id="reset">Reset camera</button></div>
 <script type="module">
@@ -51,6 +51,34 @@ const fill=new THREE.DirectionalLight(0x7ecbfd,1.3);fill.position.set(2,2,1.5);s
 const rim=new THREE.DirectionalLight(0x22b3fc,3);rim.position.set(2,2,-3);scene.add(rim);
 const grid=new THREE.GridHelper(4,20,0x173a54,0x11283d);grid.position.y=-.009;scene.add(grid);
 let character=null,mixer=null,clipAction=null,jaw=null,jawRest=null,speaking=false,autoRotate=false,paused=false,loaded=false;
+let emotion='neutral', thinking=false, speechStart=0, speechUntil=0, speechDuration=0, phonemes=[], mouthOpen=0;
+let head=null, headRest=null, eyes=[], blinkTargets=[], blinkStart=-10, nextBlink=performance.now()+2500;
+let gazeX=0,gazeY=0, gazeBlendX=0,gazeBlendY=0;
+const live=document.querySelector('#live');
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const colors={neutral:0x22b3fc,happy:0xf2d276,amused:0xffad77,curious:0x9a78ff,focused:0x7ecbfd,thoughtful:0x847dfa,concerned:0x8aa0fb,alert:0xffbd70,affectionate:0xeaa4cc};
+function setBridgeStatus(connected){live.textContent='Avatar bridge: '+(connected?'connected':'offline / reconnecting');live.classList.toggle('connected',connected);}
+function syncStatus(){if(loaded)setStatus('Ready · '+(character.userData.rigCount||0)+' bones · '+(thinking?'thinking':speaking?'speaking':emotion));}
+canvas.addEventListener('pointermove',event=>{
+ const rect=canvas.getBoundingClientRect();
+ gazeX=clamp(((event.clientX-rect.left)/Math.max(1,rect.width)-0.5)*2,-1,1);
+ gazeY=clamp(((event.clientY-rect.top)/Math.max(1,rect.height)-0.5)*2,-1,1);
+});
+canvas.addEventListener('pointerleave',()=>{gazeX=0;gazeY=0;});
+function getPhonemeOpen(timeSecs){
+ if(!phonemes.length)return null;
+ for(const p of phonemes){
+  if(!p||typeof p!=='object')continue;
+  const start=Number(p.start??p.start_time??p.startTime??p.time);
+  const end=Number(p.end??p.end_time??p.endTime??(Number.isFinite(start)?start+Number(p.duration||0.1):NaN));
+  if(!Number.isFinite(start)||!Number.isFinite(end)||timeSecs<start||timeSecs>=end)continue;
+  const symbol=String(p.phoneme??p.text??p.viseme??'').toLowerCase();
+  const amplitude=Number(p.intensity??p.open??p.weight);
+  if(Number.isFinite(amplitude))return clamp(amplitude,0,1);
+  return /[aeiouɑæəɛɪɔʊ]/.test(symbol)?0.86:/[pbmfv]/.test(symbol)?0.12:0.43;
+ }
+ return null;
+}
 const clock=new THREE.Clock();
 let startMs=performance.now(),frames=0,prevFps=startMs;
 function setStatus(t){status.textContent=t;}
@@ -71,13 +99,27 @@ loader.load('./models/athena.glb',(gltf)=>{
  controls.target.set(0,bounds.max.y*.53,0);
  camera.position.set(.72,bounds.max.y*.59,2.5);
  const actualBones=[];character.traverse(o=>{
-  if(o.isBone)actualBones.push(o);
-  if(o.name==='jaw'){jaw=o;jawRest=o.quaternion.clone();}
+  if(o.isBone){
+   actualBones.push(o);
+   if(/^jaw$/i.test(o.name)){jaw=o;jawRest=o.quaternion.clone();}
+   if(/^head$/i.test(o.name)){head=o;headRest=o.rotation.clone();}
+   if(/^(eye[_ .-]?(left|l)|left[_ .-]?eye|eye[_ .-]?(right|r)|right[_ .-]?eye)$/i.test(o.name)){
+     eyes.push({bone:o,rest:o.rotation.clone()});
+   }
+  }
+  if(o.isMesh&&o.morphTargetDictionary&&o.morphTargetInfluences){
+   Object.entries(o.morphTargetDictionary).forEach(([name,index])=>{
+    if(/^(eye[_ .-]?blink|blink)([_ .-]?(left|right|l|r))?$/i.test(name))blinkTargets.push({mesh:o,index});
+   });
+  }
  });
+ character.userData.rigCount=actualBones.length;
  mixer=new THREE.AnimationMixer(character);
  if(gltf.animations.length){clipAction=mixer.clipAction(gltf.animations[0]);clipAction.play();}
  loaded=true;
- setStatus('Ready — '+actualBones.length+' rig bones · '+gltf.animations.length+' animation clip · orbit by dragging');
+ syncStatus();
+ if(!jaw)errorStatus('Jaw bone not found; speech animation is unavailable on this GLB.');
+
 },undefined,(err)=>{setStatus('Avatar file unavailable');errorStatus('Run scripts/install-athena-avatar.sh on the Orin. '+String(err));});
 document.querySelector('#idle').addEventListener('click',()=>{paused=!paused;document.querySelector('#idle').textContent=paused?'Resume idle':'Pause idle';});
 document.querySelector('#speak').addEventListener('click',()=>{speaking=!speaking;document.querySelector('#speak').textContent=speaking?'Stop speaking':'Test speaking';});
@@ -91,12 +133,27 @@ function connect(){
   ws=new WebSocket(proto+'//'+location.host+'/ws');
   ws.onmessage=event=>{
    let d;try{d=JSON.parse(event.data)}catch{return}
-   if(d.type==='speaking')speaking=Boolean(d.active);
-   if(d.type==='tts_started')speaking=true;
-   if(d.type==='tts_completed')speaking=false;
+   if(d.type==='speaking'||d.type==='tts_started'||d.type==='tts_completed'){
+    speaking=d.type==='tts_started'?true:d.type==='tts_completed'?false:Boolean(d.active);
+    if(!speaking){speechUntil=0;phonemes=[];}
+   }
+   if(d.type==='emotion'&&typeof d.emotion==='string'){
+    emotion=d.emotion;const c=colors[emotion]??colors.neutral;
+    rim.color.setHex(c);
+   }
+   if(d.type==='thinking')thinking=Boolean(d.active);
+   if(d.type==='welcome'&&d.mood?.emotion)emotion=String(d.mood.emotion);
+   if(d.type==='tts_phonemes'&&Array.isArray(d.phonemes)){
+    phonemes=d.phonemes;
+    speechDuration=clamp(Number(d.duration)||3,0.25,60);
+    speechStart=performance.now();
+    speechUntil=speechStart+speechDuration*1000;
+   }
+   syncStatus();
   };
-  ws.onerror=()=>{};
-  ws.onclose=()=>{ws=null;};
+  ws.onopen=()=>setBridgeStatus(true);
+  ws.onerror=()=>setBridgeStatus(false);
+  ws.onclose=()=>{ws=null;setBridgeStatus(false);speaking=false;thinking=false;phonemes=[];speechUntil=0;syncStatus();};
  }catch{}
 }
 setInterval(()=>{if(loaded&&!ws)connect()},5000);
@@ -110,9 +167,27 @@ function loop(){
  requestAnimationFrame(loop);
  const dt=Math.min(clock.getDelta(),.08);
  if(mixer&&!paused)mixer.update(dt);
+ const nowMs=performance.now(),nowSec=nowMs*.001;
+ const speechActive=speaking||nowMs<speechUntil;
+ const timedPhoneme=speechActive&&speechUntil>nowMs?getPhonemeOpen((nowMs-speechStart)*.001):null;
+ const desiredMouth=speechActive?(timedPhoneme??(0.34+0.3*Math.sin(nowMs*.018)**2)):0;
+ mouthOpen+=(desiredMouth-mouthOpen)*Math.min(1,dt*(speechActive?18:11));
  if(jaw&&jawRest){
-  const angle=speaking?(0.12+.08*Math.sin(performance.now()*.026)):0;
-  jaw.quaternion.copy(jawRest).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),angle));
+  jaw.quaternion.copy(jawRest).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),mouthOpen*.31));
+ }
+ if(nowMs>nextBlink){blinkStart=nowMs;nextBlink=nowMs+2700+Math.random()*3200;}
+ const blinkPhase=(nowMs-blinkStart)/180;
+ const blink=blinkPhase>=0&&blinkPhase<=1?Math.sin(Math.PI*blinkPhase):0;
+ for(const item of blinkTargets)item.mesh.morphTargetInfluences[item.index]=blink;
+ gazeBlendX+=(gazeX-gazeBlendX)*Math.min(1,dt*3);
+ gazeBlendY+=(gazeY-gazeBlendY)*Math.min(1,dt*3);
+ if(head&&headRest){
+  head.rotation.set(headRest.x+Math.sin(nowSec*.57)*.012-gazeBlendY*.025,
+                    headRest.y+Math.sin(nowSec*.34)*.035+gazeBlendX*.045,
+                    headRest.z+Math.sin(nowSec*.41)*.012);
+ }
+ for(const eye of eyes){
+  eye.bone.rotation.set(eye.rest.x-gazeBlendY*.07,eye.rest.y+gazeBlendX*.12,eye.rest.z);
  }
  controls.autoRotate=autoRotate;controls.autoRotateSpeed=.8;controls.update();
  resize();renderer.render(scene,camera);
