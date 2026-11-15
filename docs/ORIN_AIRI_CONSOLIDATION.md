@@ -144,8 +144,10 @@ sudo python3 tools/orin_reconcile.py rollback \
   --plan /PATH/TO/ACTUAL/PLAN.json --confirm ACTUAL_PLAN_ID
 ```
 
-A `prepare` step makes a `0600` plan file with exact existing `systemd` state and
-host identity. `apply` checks state drift and the AIRI **HTTP** endpoint before
+A `prepare` step makes a `0600` plan file with exact existing `systemd` state,
+unit-definition SHA-256 fingerprint and host identity. The helper refuses units
+whose `Also=` / `Alias=` install relations or stop-propagation could affect
+other services. An altered unit definition invalidates the staged plan. `apply` checks state drift and the AIRI **HTTP** endpoint before
 mutating a single allowlisted service. It disables and stops that one service,
 rechecks AIRI HTTP, and attempts **automatic rollback on any error**. The plan
 stays **pending acceptance** until a human confirms 10 live post-cutover chat

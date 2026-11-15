@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-SCHEMA = 1
+SCHEMA = 2
 DEFAULT_STATE_DIR = Path('/var/lib/orin-airi-recovery')
 LEGACY_UI_UNITS = frozenset({
     'sentient-web-chat.service',
@@ -120,7 +120,7 @@ def probe_airi(url: str, *, timeout: float = 3) -> dict:
 def show_unit(unit: str) -> dict:
     raw = RUN.require(['systemctl','show',unit,
         '--no-pager','-p','LoadState','-p','ActiveState','-p','UnitFileState',
-        '-p','FragmentPath','-p','Names'])
+        '-p','FragmentPath','-p','Names','-p','PropagatesStopTo'])
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 def units_inventory() -> list[dict]:
@@ -142,6 +142,23 @@ def units_inventory() -> list[dict]:
         except SafetyError as exc:
             out.append({'name':name,'error':str(exc)})
     return out
+
+def unit_definition_fingerprint(unit: str) -> str:
+    """Reject multi-unit install effects; record hash, never plaintext config."""
+    source = RUN.require(['systemctl','cat',unit],timeout=15)
+    if not source.strip():
+        raise SafetyError('Cannot inspect systemd unit definition; refusing cutover')
+    in_install = False
+    for raw_line in source.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(('#',';')):
+            continue
+        if re.fullmatch(r'\[[^]]+\]',line):
+            in_install = line.lower() == '[install]'
+            continue
+        if in_install and re.match(r'^(Also|Alias)\s*=\s*\S+',line,re.IGNORECASE):
+            raise SafetyError('Legacy unit declares Also=/Alias=; disabling could affect other units')
+    return hashlib.sha256(source.encode()).hexdigest()
 
 def read_command(args: list[str], timeout: int = 15) -> dict:
     try:
@@ -199,13 +216,16 @@ def load_plan(path: Path) -> dict:
         raise SafetyError('Plan belongs to a different machine')
     if data.get('phase') not in ('prepared','applying','pending_acceptance','accepted','rolling_back','rolled_back'):
         raise SafetyError('Invalid plan phase')
-    expected_id = compute_id(data)
+    try:
+        expected_id = compute_id(data)
+    except KeyError as exc:
+        raise SafetyError(f'Incomplete plan fields: {exc}') from exc
     if expected_id != data.get('plan_id'):
         raise SafetyError('Plan identity mismatch; refusing mutation')
     return data
 
 def compute_id(plan: dict) -> str:
-    fields = {k:plan[k] for k in ('schema','machine_tag','unit','original','airi_url','created_utc')}
+    fields = {k:plan[k] for k in ('schema','machine_tag','unit','original','unit_sha256','airi_url','created_utc')}
     canonical = json.dumps(fields,sort_keys=True,separators=(',',':'))
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
@@ -220,12 +240,15 @@ def check_unit_policy(unit: str, state: dict) -> None:
         raise SafetyError('Unit is not in a stable active/inactive state')
     if unit not in state.get('Names', '').split():
         raise SafetyError('Resolved unit name does not match requested unit')
+    if state.get('PropagatesStopTo', '').strip():
+        raise SafetyError('Stop propagation to other units detected; manual review required')
 
 def prepare(unit: str, url: str, state_dir: Path) -> Path:
     root_required(); jetson_required()
     url = validate_private_url(url)
     state = show_unit(unit)
     check_unit_policy(unit,state)
+    unit_sha256=unit_definition_fingerprint(unit)
     airi_health = probe_airi(url)
     if not airi_health['http_ok']:
         raise SafetyError(f'AIRI HTTP endpoint unavailable: {airi_health}')
@@ -233,6 +256,7 @@ def prepare(unit: str, url: str, state_dir: Path) -> Path:
     plan = {'schema':SCHEMA, 'type':'airi_legacy_ui_retirement',
             'machine_tag':machine_tag(), 'hostname':socket.gethostname(),
             'created_utc':created,'airi_url':url,'original':state,
+            'unit_sha256':unit_sha256,
             'unit':unit,'phase':'prepared', 'history':[],
             'airi_http_preflight':airi_health,
             'instructions':('Before apply, independently verify ten REAL local AIRI chat '
@@ -253,6 +277,8 @@ def record(path: Path, plan: dict, phase: str, message: str) -> None:
 def restore_original(plan: dict) -> None:
     unit = plan['unit']
     state = plan['original']
+    if unit_definition_fingerprint(unit) != plan['unit_sha256']:
+        raise SafetyError('Unit definition changed; operator must review recovery manually')
     # Restore both enable state and current running state. No unit files/data deleted.
     if state['UnitFileState'] == 'enabled':
         RUN.require(['systemctl','enable',unit], 30)
@@ -274,6 +300,9 @@ def apply_plan(path: Path, confirmation: str, chat_ack: bool) -> dict:
     if confirmation != plan['plan_id'] or not chat_ack:
         raise SafetyError('Require exact --confirm PLAN_ID and --airi-chat-tested after 10 real replies')
     previous = show_unit(plan['unit'])
+    check_unit_policy(plan['unit'],previous)
+    if unit_definition_fingerprint(plan['unit']) != plan['unit_sha256']:
+        raise SafetyError('Unit-file contents changed since prepare; create a fresh plan')
     if previous != plan['original']:
         raise SafetyError('Unit state drift since prepare; create a fresh plan')
     health = probe_airi(plan['airi_url'])

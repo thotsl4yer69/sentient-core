@@ -18,12 +18,15 @@ class FakeSystem:
         self.enabled = 'enabled'
         self.fail_after_disable = False
         self.commands = []
+        self.source = '[Unit]\nDescription=Legacy UI\n[Install]\nWantedBy=multi-user.target\n'
     def show(self, unit):
         assert unit == self.name
         return {'LoadState':'loaded','ActiveState':self.active,
                 'UnitFileState':self.enabled,
-                'FragmentPath':f'/etc/systemd/system/{unit}', 'Names':unit}
+                'FragmentPath':f'/etc/systemd/system/{unit}', 'Names':unit, 'PropagatesStopTo':''}
     def require(self, args, timeout=15):
+        if args[:2]==['systemctl','cat']:
+            return self.source
         self.commands.append(args)
         if args[:2] == ['systemctl', 'disable']:
             self.enabled='disabled'
@@ -59,6 +62,12 @@ class TestSafety(unittest.TestCase):
                 rc.check_unit_policy(unit,state)
         state['UnitFileState']='masked'
         with self.assertRaises(rc.SafetyError):
+            rc.check_unit_policy('sentient-web-chat.service',state)
+
+    def test_propagated_stops_are_forbidden(self):
+        state=FakeSystem().show('sentient-web-chat.service')
+        state['PropagatesStopTo']='other-app.service'
+        with self.assertRaisesRegex(rc.SafetyError,'Stop propagation'):
             rc.check_unit_policy('sentient-web-chat.service',state)
 
     def test_read_only_inventory_filters_without_secrets(self):
@@ -186,6 +195,29 @@ class TestTransaction(unittest.TestCase):
             with self.assertRaisesRegex(rc.SafetyError,'Requires root'):
                 rc.prepare(self.fake.name,'http://127.0.0.1:3000/',self.state_dir)
         self.assertEqual(self.fake.commands,[])
+
+
+    def test_also_and_alias_install_effects_blocked(self):
+        for field in ('Also=some-other.service','Alias=another.service'):
+            self.fake.source='[Unit]\nDescription=Demo\n[Install]\n'+field+'\n'
+            with self.subTest(field=field),self.assertRaisesRegex(rc.SafetyError,'Also=/Alias='):
+                rc.prepare(self.fake.name,'http://127.0.0.1:3000/',self.state_dir)
+            self.assertEqual(self.fake.commands,[])
+
+    def test_unit_file_drift_blocks_apply(self):
+        path,plan=self.prepare()
+        self.fake.source+='\n# Updated service definition after staging\n'
+        with self.assertRaisesRegex(rc.SafetyError,'Unit-file contents changed'):
+            rc.apply_plan(path,plan['plan_id'],True)
+        self.assertEqual(self.fake.commands,[])
+
+    def test_unit_file_drift_blocks_rollback(self):
+        path,plan=self.prepare()
+        rc.apply_plan(path,plan['plan_id'],True)
+        self.fake.source+='\n# Changed after cutover\n'
+        with self.assertRaisesRegex(rc.SafetyError,'Unit definition changed'):
+            rc.rollback(path,plan['plan_id'])
+        self.assertEqual((self.fake.active,self.fake.enabled),('inactive','disabled'))
 
     def test_tampered_plan_rejected(self):
         path,plan=self.prepare()
