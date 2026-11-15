@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "release": "orin-native-voice-usb-recovery-20261030",
+  "baseline": "27 October 2026 deployed native Orin snapshot",
+  "deployed": false,
+  "files": [
+    {
+      "file": "handsfree.py",
+      "target": "voice/handsfree.py",
+      "baseline_sha256": "d870cea3b7af86d8b958af7c8095c1e2aeee518f479ac91183c516c27df02927",
+      "sha256": "89b5b4143b705bdf0f4030e3d2d454c6aa99ad5e84394f5295778e5d047f9f51"
+    },
+    {
+      "file": "audio_devices.py",
+      "target": "voice/audio_devices.py",
+      "baseline_sha256": null,
+      "sha256": "005a53ac3ca966fb0a206fcef61c72b4c8f56ff903a51bd08ad3951d070bd30d"
+    },
+    {
+      "file": "handsfree-controls.js",
+      "target": "dashboard/static/js/handsfree-controls.js",
+      "baseline_sha256": "f69d660cff48422f05275a6db77db3111b6c47106239c82ef2f448a6eb09c63b",
+      "sha256": "9a04ee34db68cb820ca029dc04f16134c0e7d52347a1094c5eb3a15652316b47"
+    }
+  ]
+}
