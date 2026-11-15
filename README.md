@@ -1,5 +1,7 @@
 # Sentient Core
 
+> **AIRI-first recovery (16 Nov 2026):** AIRI is the sole intended operator-facing interface, not an additional dashboard. The verified source-level consolidation tools and tests are in [Orin AIRI consolidation](docs/ORIN_AIRI_CONSOLIDATION.md). Both old bulk systemd installers are now blocked in source. The physical Orin remains **unverified/offline**; no on-device configuration or service replacement has been claimed.
+
 **Local-first edge AI system for NVIDIA Jetson hardware**
 
 [![Status](https://img.shields.io/badge/status-deployed%20prototype-blue)](PROJECT_STATUS.md)

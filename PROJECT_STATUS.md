@@ -5,6 +5,14 @@
 **Primary target:** NVIDIA Jetson Orin Nano  
 **Last portfolio review:** 2026-08-13
 
+## AIRI-first source safety update — 16 November 2026
+
+- The default branch now includes a read-only Orin inventory, a one-unit legacy-UI cutover helper with state capture and rollback, and regression tests.
+- `systemd/deploy.sh` and `systemd/install.sh` are intentionally blocked; they no longer auto-enable the legacy UI/service stack from this revision.
+- GitHub safety and source workflows passed on commit `4cc3c87e954bd1c83e8152028eacc2d76967d1eb`.
+- **Physical acceptance remains NOT TESTED:** Desktop Commander access is offline and the user-reported Jetson LAN IP `192.168.1.168` is not identity-verified; it has also been used historically by the separate Windows ATHENA host.
+- See [AIRI consolidation operator runbook](docs/ORIN_AIRI_CONSOLIDATION.md) before any hardware mutation.
+
 ## What is demonstrated
 
 - Local-first conversational AI stack running on Jetson-class edge hardware.

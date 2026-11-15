@@ -1,5 +1,7 @@
 # Sentient Core — Quickstart
 
+> **Do not use old bulk installers:** `systemd/deploy.sh` and `systemd/install.sh` are intentionally retired. Begin with the [AIRI-first operator runbook](docs/ORIN_AIRI_CONSOLIDATION.md), preserve the current AIRI installation and inventory the exact host before launching or retiring any UI.
+
 > **Current maturity: Deployed prototype / active hardening.**  
 > This guide is for running and inspecting an existing Sentient Core development node. It does not imply that every historical service is active on every revision. Read [PROJECT_STATUS.md](PROJECT_STATUS.md) and [SECURITY.md](SECURITY.md) first.
 
