@@ -27,7 +27,10 @@ class FakeSystem:
         self.commands.append(args)
         if args[:2] == ['systemctl', 'disable']:
             self.enabled='disabled'
-            if '--now' in args: self.active='inactive'
+            if '--now' in args:
+                self.active='inactive'
+                if self.fail_after_disable:
+                    raise rc.SafetyError('Injected failure after systemd state change')
         elif args[:2] == ['systemctl', 'enable']:
             self.enabled='enabled'
         elif args[:2] == ['systemctl', 'stop']:
@@ -142,6 +145,47 @@ class TestTransaction(unittest.TestCase):
                 rc.apply_plan(path,plan['plan_id'],True)
         self.assertEqual((self.fake.active,self.fake.enabled),('active','enabled'))
         self.assertEqual(rc.load_plan(path)['phase'],'rolled_back')
+
+
+    def test_originally_disabled_inactive_is_not_started_on_rollback(self):
+        self.fake.enabled='disabled'
+        self.fake.active='inactive'
+        path,plan=self.prepare()
+        rc.apply_plan(path,plan['plan_id'],True)
+        rc.rollback(path,plan['plan_id'])
+        self.assertEqual((self.fake.active,self.fake.enabled),('inactive','disabled'))
+        self.assertFalse(any(x[:2]==['systemctl','start'] for x in self.fake.commands))
+
+    def test_rollback_from_interrupted_apply(self):
+        path,plan=self.prepare()
+        # Simulates power loss after systemctl disabled the unit but before
+        # the post-change HTTP check or acceptance step could run.
+        rc.record(path,plan,'applying','Simulated power-loss state')
+        self.fake.active='inactive'; self.fake.enabled='disabled'
+        result=rc.rollback(path,plan['plan_id'])
+        self.assertEqual(result['phase'],'rolled_back')
+        self.assertEqual((self.fake.active,self.fake.enabled),('active','enabled'))
+
+    def test_auto_rollback_when_disable_partly_fails(self):
+        path,plan=self.prepare()
+        self.fake.fail_after_disable=True
+        with self.assertRaisesRegex(rc.SafetyError,'automatic rollback succeeded'):
+            rc.apply_plan(path,plan['plan_id'],True)
+        self.assertEqual((self.fake.active,self.fake.enabled),('active','enabled'))
+        self.assertEqual(rc.load_plan(path)['phase'],'rolled_back')
+
+    def test_symlink_plan_rejected(self):
+        path,plan=self.prepare()
+        link=self.state_dir/'untrusted-symlink.json'
+        link.symlink_to(path)
+        with self.assertRaisesRegex(rc.SafetyError,'symlink'):
+            rc.load_plan(link)
+
+    def test_access_denied_blocks_before_mutations(self):
+        with patch.object(rc,'root_required',side_effect=rc.SafetyError('Requires root')):
+            with self.assertRaisesRegex(rc.SafetyError,'Requires root'):
+                rc.prepare(self.fake.name,'http://127.0.0.1:3000/',self.state_dir)
+        self.assertEqual(self.fake.commands,[])
 
     def test_tampered_plan_rejected(self):
         path,plan=self.prepare()
