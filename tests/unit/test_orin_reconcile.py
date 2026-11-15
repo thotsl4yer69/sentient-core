@@ -23,7 +23,8 @@ class FakeSystem:
         assert unit == self.name
         return {'LoadState':'loaded','ActiveState':self.active,
                 'UnitFileState':self.enabled,
-                'FragmentPath':f'/etc/systemd/system/{unit}', 'Names':unit, 'PropagatesStopTo':''}
+                'FragmentPath':f'/etc/systemd/system/{unit}', 'Names':unit,
+                'PropagatesStopTo':'', 'BoundBy':'', 'ConsistsOf':'', 'TriggeredBy':''}
     def require(self, args, timeout=15):
         if args[:2]==['systemctl','cat']:
             return self.source
@@ -65,9 +66,16 @@ class TestSafety(unittest.TestCase):
             rc.check_unit_policy('sentient-web-chat.service',state)
 
     def test_propagated_stops_are_forbidden(self):
+        for relation in ('PropagatesStopTo', 'BoundBy', 'ConsistsOf'):
+            state=FakeSystem().show('sentient-web-chat.service')
+            state[relation]='other-app.service'
+            with self.subTest(relation=relation), self.assertRaisesRegex(rc.SafetyError,'Stop propagation'):
+                rc.check_unit_policy('sentient-web-chat.service',state)
+
+    def test_activation_trigger_is_forbidden(self):
         state=FakeSystem().show('sentient-web-chat.service')
-        state['PropagatesStopTo']='other-app.service'
-        with self.assertRaisesRegex(rc.SafetyError,'Stop propagation'):
+        state['TriggeredBy']='sentient-web-chat.socket'
+        with self.assertRaisesRegex(rc.SafetyError,'activation detected'):
             rc.check_unit_policy('sentient-web-chat.service',state)
 
     def test_frontend_candidate_inventory_marks_names_not_permissions(self):
@@ -253,3 +261,4 @@ class TestTransaction(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -120,7 +120,8 @@ def probe_airi(url: str, *, timeout: float = 3) -> dict:
 def show_unit(unit: str) -> dict:
     raw = RUN.require(['systemctl','show',unit,
         '--no-pager','-p','LoadState','-p','ActiveState','-p','UnitFileState',
-        '-p','FragmentPath','-p','Names','-p','PropagatesStopTo'])
+        '-p','FragmentPath','-p','Names','-p','PropagatesStopTo',
+        '-p','BoundBy','-p','ConsistsOf','-p','TriggeredBy'])
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 def units_inventory() -> list[dict]:
@@ -268,8 +269,16 @@ def check_unit_policy(unit: str, state: dict) -> None:
         raise SafetyError('Unit is not in a stable active/inactive state')
     if unit not in state.get('Names', '').split():
         raise SafetyError('Resolved unit name does not match requested unit')
-    if state.get('PropagatesStopTo', '').strip():
-        raise SafetyError('Stop propagation to other units detected; manual review required')
+    cascading = {
+        key: state.get(key, '').strip()
+        for key in ('PropagatesStopTo', 'BoundBy', 'ConsistsOf')
+        if state.get(key, '').strip()
+    }
+    if cascading:
+        detail = ', '.join(f'{key}={value}' for key, value in cascading.items())
+        raise SafetyError(f'Stop propagation to other units detected ({detail}); manual review required')
+    if state.get('TriggeredBy', '').strip():
+        raise SafetyError('Socket/timer/path activation detected; retire the trigger as a separate reviewed change')
 
 def prepare(unit: str, url: str, state_dir: Path) -> Path:
     root_required(); jetson_required()
@@ -440,3 +449,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__=='__main__':
     sys.exit(main())
+
