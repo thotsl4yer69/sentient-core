@@ -121,7 +121,8 @@ def show_unit(unit: str) -> dict:
     raw = RUN.require(['systemctl','show',unit,
         '--no-pager','-p','LoadState','-p','ActiveState','-p','UnitFileState',
         '-p','FragmentPath','-p','Names','-p','PropagatesStopTo',
-        '-p','BoundBy','-p','ConsistsOf','-p','TriggeredBy'])
+        '-p','BoundBy','-p','ConsistsOf','-p','TriggeredBy',
+        '-p','MainPID','-p','User','-p','WorkingDirectory'])
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 def units_inventory() -> list[dict]:
@@ -194,6 +195,50 @@ def frontend_candidates(units: list[dict], containers: dict) -> list[dict]:
                           'removal_approved':False})
     return found
 
+def voice_runtime_paths(units: list[dict]) -> list[Path]:
+    """Known voice entrypoints plus candidates beneath observed service workdirs."""
+    paths = {
+        Path('/mnt/orin-ai/orin/voice/handsfree.py'),
+        Path('/mnt/orin-ai/orin/voice/audio_devices.py'),
+        Path('/mnt/orin-ai/orin/dashboard/static/js/handsfree-controls.js'),
+    }
+    relative = (
+        Path('sentient/services/voice/wake_word.py'),
+        Path('sentient/services/voice/pipeline.py'),
+        Path('voice/handsfree.py'),
+        Path('voice/audio_devices.py'),
+    )
+    for unit in units:
+        working = unit.get('WorkingDirectory', '')
+        if working.startswith('/') and len(working) < 4096:
+            base = Path(working)
+            paths.update(base / item for item in relative)
+    return sorted(paths, key=str)
+
+def fingerprint_files(paths: list[Path], max_bytes: int = 5 * 1024 * 1024) -> list[dict]:
+    """Hash small regular files without reading symlink targets or file contents out."""
+    observed = []
+    for path in paths:
+        item = {'path': str(path), 'exists': False}
+        try:
+            metadata = path.lstat()
+            item.update(exists=True, symlink=path.is_symlink(), size=metadata.st_size,
+                        modified_ns=metadata.st_mtime_ns)
+            if not item['symlink'] and path.is_file() and metadata.st_size <= max_bytes:
+                digest = hashlib.sha256()
+                with path.open('rb') as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b''):
+                        digest.update(block)
+                item['sha256'] = digest.hexdigest()
+            elif not item['symlink'] and path.is_file():
+                item['hash_skipped'] = f'larger_than_{max_bytes}_bytes'
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            item['error'] = f'{type(exc).__name__}: {exc}'[:240]
+        observed.append(item)
+    return observed
+
 def inventory() -> dict:
     """Metadata only: no environment, docker inspect, process arguments or journals."""
     units=units_inventory()
@@ -208,6 +253,7 @@ def inventory() -> dict:
         'ports':read_command(['ss','-ltnp']),
         'containers':containers,
         'frontend_candidates':frontend_candidates(units,containers),
+        'voice_runtime_files':fingerprint_files(voice_runtime_paths(units)),
         'models':read_command(['ollama','list']),
         'loaded_models':read_command(['ollama','ps']),
         'audio_inputs':read_command(['arecord','-l']),

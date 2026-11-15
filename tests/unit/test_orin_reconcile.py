@@ -1,4 +1,5 @@
 """Host-free tests. Never contacts systemd, Docker, network, or the Jetson."""
+import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -90,6 +91,26 @@ class TestSafety(unittest.TestCase):
                          {'sentient-web-chat.service','airi-stage.service','open-webui'})
         self.assertTrue(all(x['removal_approved'] is False for x in found))
         self.assertEqual(next(x for x in found if x['name']=='airi-stage.service')['role_hint'],'AIRI')
+
+    def test_voice_runtime_paths_include_observed_service_workdir(self):
+        paths=rc.voice_runtime_paths([{'WorkingDirectory':'/opt/sentient-core'}])
+        self.assertIn(Path('/opt/sentient-core/sentient/services/voice/wake_word.py'),paths)
+        self.assertIn(Path('/mnt/orin-ai/orin/voice/handsfree.py'),paths)
+        self.assertNotIn(Path('relative/voice/handsfree.py'),
+                         rc.voice_runtime_paths([{'WorkingDirectory':'relative'}]))
+
+    def test_runtime_fingerprints_do_not_follow_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            regular=root/'voice.py'; regular.write_bytes(b'voice runtime\n')
+            link=root/'link.py'; link.symlink_to(regular)
+            missing=root/'missing.py'
+            result={x['path']:x for x in rc.fingerprint_files([regular,link,missing])}
+        self.assertEqual(result[str(regular)]['sha256'],
+                         hashlib.sha256(b'voice runtime\n').hexdigest())
+        self.assertTrue(result[str(link)]['symlink'])
+        self.assertNotIn('sha256',result[str(link)])
+        self.assertFalse(result[str(missing)]['exists'])
 
     def test_read_only_inventory_filters_without_secrets(self):
         class FakeRunner:

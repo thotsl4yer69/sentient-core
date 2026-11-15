@@ -61,7 +61,11 @@ bash tools/orin_read_only_audit.sh
 The Python collector records **metadata**, not environment variables, secrets,
 `docker inspect`, process arguments or raw journals. It discovers relevant
 service names, listener-to-process metadata, model names, containers,
-name-based frontend candidates and mic/speaker enumeration. Candidates are
+name-based frontend candidates, mic/speaker enumeration, and SHA-256 fingerprints
+for small known voice-runtime files without following symlinks. The fingerprints
+distinguish the `sentient/services/voice` stack from the separate
+`/mnt/orin-ai/orin` native listener before either pending branch is considered.
+Candidates are
 **investigation leads**, never permission to retire any component.
 The shell audit supplies supporting host metadata. Both collect **locally**, and
 reports can expose host/service names: review them before sharing. Do not commit
