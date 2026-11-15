@@ -60,7 +60,8 @@ bash tools/orin_read_only_audit.sh
 
 The Python collector records **metadata**, not environment variables, secrets,
 `docker inspect`, process arguments or raw journals. It discovers relevant
-service names, listener-to-process metadata, model names, containers,
+device-tree model and SSH public host-key fingerprints, relevant service names,
+listener-to-process metadata, model names, containers,
 name-based frontend candidates, mic/speaker enumeration, and SHA-256 fingerprints
 for small known voice-runtime files without following symlinks. The fingerprints
 distinguish the `sentient/services/voice` stack from the separate
@@ -69,6 +70,8 @@ It also records shallow counts, timestamps and direct-file byte totals for the
 known recovery-plan and native-voice backup directories, without exposing child
 names or following symlinks. This confirms whether rollback material exists; it
 does not prove that a backup is complete or restorable.
+Use the public host-key fingerprints to match the pinned SSH identity before
+trusting a recycled LAN address; private host keys and key comments are never read.
 Candidates are
 **investigation leads**, never permission to retire any component.
 The shell audit supplies supporting host metadata. Both collect **locally**, and

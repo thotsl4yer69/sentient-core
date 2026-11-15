@@ -7,6 +7,7 @@ is interpreted as permission to mutate the host. Python 3.10+, stdlib only.
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import ipaddress
@@ -29,6 +30,11 @@ DEFAULT_STATE_DIR = Path('/var/lib/orin-airi-recovery')
 BACKUP_LOCATIONS = (
     DEFAULT_STATE_DIR,
     Path('/mnt/orin-ai/backups'),
+)
+SSH_HOST_PUBLIC_KEYS = (
+    Path('/etc/ssh/ssh_host_ed25519_key.pub'),
+    Path('/etc/ssh/ssh_host_ecdsa_key.pub'),
+    Path('/etc/ssh/ssh_host_rsa_key.pub'),
 )
 LEGACY_UI_UNITS = frozenset({
     'sentient-web-chat.service',
@@ -289,6 +295,57 @@ def summarize_backup_locations(paths: tuple[Path, ...] = BACKUP_LOCATIONS) -> li
         observed.append(item)
     return observed
 
+def read_device_model(path: Path = Path('/proc/device-tree/model')) -> dict:
+    """Read the bounded device-tree model marker without following a symlink."""
+    item = {'path': str(path), 'exists': False}
+    try:
+        metadata = path.lstat()
+        item.update(exists=True, symlink=stat.S_ISLNK(metadata.st_mode))
+        if item['symlink']:
+            return item
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 4096:
+            item['error'] = 'model marker is not a small regular file'
+            return item
+        raw = path.read_bytes()
+        if len(raw) > 4096:
+            item['error'] = 'model marker exceeds 4096 bytes'
+            return item
+        item['value'] = raw.rstrip(b'\x00\r\n').decode('utf-8')
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeDecodeError) as exc:
+        item['error'] = f'{type(exc).__name__}: {exc}'[:240]
+    return item
+
+def ssh_host_key_fingerprints(paths: tuple[Path, ...] = SSH_HOST_PUBLIC_KEYS) -> list[dict]:
+    """Fingerprint fixed public host-key files without comments or private-key access."""
+    observed = []
+    for path in paths:
+        item = {'path': str(path), 'exists': False}
+        try:
+            metadata = path.lstat()
+            item.update(exists=True, symlink=stat.S_ISLNK(metadata.st_mode))
+            if item['symlink']:
+                observed.append(item)
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16384:
+                item['error'] = 'public key is not a small regular file'
+                observed.append(item)
+                continue
+            fields = path.read_text(encoding='ascii').split()
+            if len(fields) < 2:
+                raise ValueError('malformed OpenSSH public key')
+            public_key = base64.b64decode(fields[1], validate=True)
+            digest = hashlib.sha256(public_key).digest()
+            item.update(key_type=fields[0],
+                        sha256='SHA256:' + base64.b64encode(digest).decode().rstrip('='))
+        except FileNotFoundError:
+            pass
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            item['error'] = f'{type(exc).__name__}: {exc}'[:240]
+        observed.append(item)
+    return observed
+
 def inventory() -> dict:
     """Metadata only: no environment, docker inspect, process arguments or journals."""
     units=units_inventory()
@@ -297,8 +354,10 @@ def inventory() -> dict:
     return {
         'schema':SCHEMA, 'observed_utc':utc_now(), 'hostname':socket.gethostname(),
         'platform':platform.platform(), 'architecture':platform.machine(),
+        'device_model':read_device_model(),
         'jetson_marker':Path('/etc/nv_tegra_release').read_text().strip()
            if Path('/etc/nv_tegra_release').is_file() else None,
+        'ssh_host_public_keys':ssh_host_key_fingerprints(),
         'units':units,
         'ports':read_command(['ss','-ltnp']),
         'containers':containers,

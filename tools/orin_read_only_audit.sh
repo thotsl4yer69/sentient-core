@@ -15,7 +15,7 @@ section() {
   printf ' complete\n'
 }
 
-section identity bash -c 'printf "UTC: "; date -u --iso-8601=seconds; printf "Host: "; hostname; printf "Kernel: "; uname -a; printf "OS:\n"; cat /etc/os-release 2>/dev/null || true; printf "L4T:\n"; cat /etc/nv_tegra_release 2>/dev/null || true; printf "User: "; id'
+section identity bash -c 'printf "UTC: "; date -u --iso-8601=seconds; printf "Host: "; hostname; printf "Kernel: "; uname -a; printf "Device model: "; tr -d "\000" </proc/device-tree/model 2>/dev/null || true; printf "\nOS:\n"; cat /etc/os-release 2>/dev/null || true; printf "L4T:\n"; cat /etc/nv_tegra_release 2>/dev/null || true; printf "User: "; id'
 section network bash -c 'ip -4 -br addr 2>/dev/null; echo; ip route 2>/dev/null; echo; ip -br link 2>/dev/null; echo; ss -ltnp 2>/dev/null'
 section compute bash -c 'free -h; echo; df -hT; echo; lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS,MODEL; echo; uptime; echo; if command -v nvpmodel >/dev/null 2>&1; then nvpmodel -q; fi; if command -v tegrastats >/dev/null 2>&1; then timeout 4 tegrastats --interval 1000 || true; fi'
 section units bash -c "systemctl list-units --all --no-pager --plain --type=service 2>/dev/null | grep -Ei 'airi|sentient|cortana|avatar|llama|ollama|redis|mosquitto|starnet|docker|voice|whisper|piper|desktop.commander|tamagotchi' || true; printf '\nUNIT FILES:\n'; systemctl list-unit-files --type=service --no-pager --plain 2>/dev/null | grep -Ei 'airi|sentient|cortana|avatar|llama|ollama|redis|mosquitto|starnet|docker|voice|whisper|piper' || true; printf '\nFAILED:\n'; systemctl --failed --no-pager 2>/dev/null || true"

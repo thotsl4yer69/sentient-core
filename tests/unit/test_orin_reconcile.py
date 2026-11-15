@@ -1,4 +1,5 @@
 """Host-free tests. Never contacts systemd, Docker, network, or the Jetson."""
+import base64
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -130,6 +131,26 @@ class TestSafety(unittest.TestCase):
         serialized=str(result)
         self.assertNotIn('secret-receipt-name',serialized)
         self.assertNotIn('voice-usb-recovery-private-id',serialized)
+
+    def test_identity_markers_are_bounded_and_host_keys_omit_comments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            model=root/'model'; model.write_bytes(b'NVIDIA Jetson Orin Nano\x00')
+            public_bytes=b'bounded test public key bytes'
+            public=root/'ssh_host_ed25519_key.pub'
+            public.write_text('ssh-ed25519 '+base64.b64encode(public_bytes).decode()
+                              +' private-host-comment\n')
+            link=root/'linked.pub'; link.symlink_to(public)
+            model_result=rc.read_device_model(model)
+            keys=rc.ssh_host_key_fingerprints((public,link,root/'missing.pub'))
+        self.assertEqual(model_result['value'],'NVIDIA Jetson Orin Nano')
+        self.assertEqual(keys[0]['key_type'],'ssh-ed25519')
+        expected='SHA256:'+base64.b64encode(hashlib.sha256(public_bytes).digest()).decode().rstrip('=')
+        self.assertEqual(keys[0]['sha256'],expected)
+        self.assertTrue(keys[1]['symlink'])
+        self.assertNotIn('sha256',keys[1])
+        self.assertFalse(keys[2]['exists'])
+        self.assertNotIn('private-host-comment',str(keys))
 
     def test_read_only_inventory_filters_without_secrets(self):
         class FakeRunner:
