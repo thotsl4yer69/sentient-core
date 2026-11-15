@@ -70,6 +70,19 @@ class TestSafety(unittest.TestCase):
         with self.assertRaisesRegex(rc.SafetyError,'Stop propagation'):
             rc.check_unit_policy('sentient-web-chat.service',state)
 
+    def test_frontend_candidate_inventory_marks_names_not_permissions(self):
+        units=[{'name':'sentient-web-chat.service','ActiveState':'active'},
+               {'name':'ollama.service','ActiveState':'active'},
+               {'name':'airi-stage.service','ActiveState':'active'}]
+        containers={'stdout':(
+            'open-webui|ghcr.io/open-webui/open-webui:stable|Up 4h|127.0.0.1:3100->8080/tcp\n'
+            'redis|redis:7|Up 5h|6379/tcp\n')}
+        found=rc.frontend_candidates(units,containers)
+        self.assertEqual({x['name'] for x in found},
+                         {'sentient-web-chat.service','airi-stage.service','open-webui'})
+        self.assertTrue(all(x['removal_approved'] is False for x in found))
+        self.assertEqual(next(x for x in found if x['name']=='airi-stage.service')['role_hint'],'AIRI')
+
     def test_read_only_inventory_filters_without_secrets(self):
         class FakeRunner:
             def run(self,args,timeout=15):

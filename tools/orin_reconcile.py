@@ -168,17 +168,45 @@ def read_command(args: list[str], timeout: int = 15) -> dict:
     except SafetyError as exc:
         return {'error':str(exc)}
 
+def frontend_candidates(units: list[dict], containers: dict) -> list[dict]:
+    """Name-based leads only. Never infer that a candidate is safe to stop."""
+    found = []
+    for item in units:
+        name = item.get('name','')
+        low = name.lower()
+        if ('airi' in low or name in LEGACY_UI_UNITS
+                or any(k in low for k in ('web-chat','dashboard','open-webui'))):
+            found.append({'source':'systemd','name':name,
+                          'role_hint':'AIRI' if 'airi' in low else 'legacy_or_other_ui',
+                          'active_state':item.get('ActiveState','unknown'),
+                          'removal_approved':False})
+    for raw in containers.get('stdout','').splitlines():
+        parts=raw.split('|',3)
+        if len(parts)!=4:
+            continue
+        name,image,status,ports=(x.strip() for x in parts)
+        low=(name+' '+image).lower()
+        if any(k in low for k in ('airi','open-webui','cortana','sentient-web','dashboard','portainer','grafana')):
+            found.append({'source':'docker','name':name,'image':image,
+                          'status':status,'ports':ports,
+                          'role_hint':'AIRI' if 'airi' in low else 'legacy_or_other_ui',
+                          'removal_approved':False})
+    return found
+
 def inventory() -> dict:
     """Metadata only: no environment, docker inspect, process arguments or journals."""
+    units=units_inventory()
+    containers=read_command(['docker','ps','-a','--format',
+          '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}'])
     return {
         'schema':SCHEMA, 'observed_utc':utc_now(), 'hostname':socket.gethostname(),
         'platform':platform.platform(), 'architecture':platform.machine(),
         'jetson_marker':Path('/etc/nv_tegra_release').read_text().strip()
            if Path('/etc/nv_tegra_release').is_file() else None,
-        'units':units_inventory(),
-        'ports':read_command(['ss','-ltn']),
-        'containers':read_command(['docker','ps','-a','--format',
-            '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}']),
+        'units':units,
+        'ports':read_command(['ss','-ltnp']),
+        'containers':containers,
+        'frontend_candidates':frontend_candidates(units,containers),
         'models':read_command(['ollama','list']),
         'loaded_models':read_command(['ollama','ps']),
         'audio_inputs':read_command(['arecord','-l']),
