@@ -65,6 +65,10 @@ name-based frontend candidates, mic/speaker enumeration, and SHA-256 fingerprint
 for small known voice-runtime files without following symlinks. The fingerprints
 distinguish the `sentient/services/voice` stack from the separate
 `/mnt/orin-ai/orin` native listener before either pending branch is considered.
+It also records shallow counts, timestamps and direct-file byte totals for the
+known recovery-plan and native-voice backup directories, without exposing child
+names or following symlinks. This confirms whether rollback material exists; it
+does not prove that a backup is complete or restorable.
 Candidates are
 **investigation leads**, never permission to retire any component.
 The shell audit supplies supporting host metadata. Both collect **locally**, and

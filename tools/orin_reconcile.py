@@ -16,6 +16,7 @@ from pathlib import Path
 import platform
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,10 @@ import urllib.request
 
 SCHEMA = 2
 DEFAULT_STATE_DIR = Path('/var/lib/orin-airi-recovery')
+BACKUP_LOCATIONS = (
+    DEFAULT_STATE_DIR,
+    Path('/mnt/orin-ai/backups'),
+)
 LEGACY_UI_UNITS = frozenset({
     'sentient-web-chat.service',
     'cortana-web.service',
@@ -239,6 +244,51 @@ def fingerprint_files(paths: list[Path], max_bytes: int = 5 * 1024 * 1024) -> li
         observed.append(item)
     return observed
 
+def summarize_backup_locations(paths: tuple[Path, ...] = BACKUP_LOCATIONS) -> list[dict]:
+    """Report shallow backup metadata without exposing filenames or following symlinks."""
+    observed = []
+    for path in paths:
+        item = {'path': str(path), 'exists': False}
+        try:
+            metadata = path.lstat()
+            item.update(exists=True, symlink=stat.S_ISLNK(metadata.st_mode),
+                        modified_ns=metadata.st_mtime_ns)
+            if item['symlink']:
+                observed.append(item)
+                continue
+            if not stat.S_ISDIR(metadata.st_mode):
+                item['directory'] = False
+                observed.append(item)
+                continue
+            counts = {'regular_files': 0, 'directories': 0, 'symlinks': 0,
+                      'other': 0}
+            direct_file_bytes = 0
+            newest_modified_ns = metadata.st_mtime_ns
+            for child in path.iterdir():
+                child_metadata = child.lstat()
+                newest_modified_ns = max(newest_modified_ns,
+                                         child_metadata.st_mtime_ns)
+                mode = child_metadata.st_mode
+                if stat.S_ISLNK(mode):
+                    counts['symlinks'] += 1
+                elif stat.S_ISREG(mode):
+                    counts['regular_files'] += 1
+                    direct_file_bytes += child_metadata.st_size
+                elif stat.S_ISDIR(mode):
+                    counts['directories'] += 1
+                else:
+                    counts['other'] += 1
+            item.update(directory=True, direct_children=sum(counts.values()),
+                        direct_child_types=counts,
+                        direct_regular_file_bytes=direct_file_bytes,
+                        newest_modified_ns=newest_modified_ns)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            item['error'] = f'{type(exc).__name__}: {exc}'[:240]
+        observed.append(item)
+    return observed
+
 def inventory() -> dict:
     """Metadata only: no environment, docker inspect, process arguments or journals."""
     units=units_inventory()
@@ -254,6 +304,7 @@ def inventory() -> dict:
         'containers':containers,
         'frontend_candidates':frontend_candidates(units,containers),
         'voice_runtime_files':fingerprint_files(voice_runtime_paths(units)),
+        'backup_locations':summarize_backup_locations(),
         'models':read_command(['ollama','list']),
         'loaded_models':read_command(['ollama','ps']),
         'audio_inputs':read_command(['arecord','-l']),

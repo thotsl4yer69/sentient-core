@@ -112,6 +112,25 @@ class TestSafety(unittest.TestCase):
         self.assertNotIn('sha256',result[str(link)])
         self.assertFalse(result[str(missing)]['exists'])
 
+    def test_backup_summary_is_shallow_and_does_not_expose_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            backup=root/'backups'; backup.mkdir()
+            (backup/'secret-receipt-name.json').write_bytes(b'{}')
+            (backup/'voice-usb-recovery-private-id').mkdir()
+            (backup/'current').symlink_to(backup/'voice-usb-recovery-private-id')
+            missing=root/'missing'
+            result=rc.summarize_backup_locations((backup,missing))
+        summary=result[0]
+        self.assertEqual(summary['direct_children'],3)
+        self.assertEqual(summary['direct_child_types'],
+                         {'regular_files':1,'directories':1,'symlinks':1,'other':0})
+        self.assertEqual(summary['direct_regular_file_bytes'],2)
+        self.assertFalse(result[1]['exists'])
+        serialized=str(result)
+        self.assertNotIn('secret-receipt-name',serialized)
+        self.assertNotIn('voice-usb-recovery-private-id',serialized)
+
     def test_read_only_inventory_filters_without_secrets(self):
         class FakeRunner:
             def run(self,args,timeout=15):
