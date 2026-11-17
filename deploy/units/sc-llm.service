@@ -1,0 +1,23 @@
+[Unit]
+Description=SC LLM engine
+PartOf=sc.target
+After=network-online.target
+
+# The container cap is docker --memory. A service memory limit does not apply
+# inside the container's own cgroup, so this unit does not set one.
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c '/usr/bin/docker rm -f sc-llm >/dev/null 2>&1 || true'
+ExecStart=/bin/sh -c 'exec /usr/bin/docker run --rm --name sc-llm --memory=3300m --memory-swap=3300m --publish 127.0.0.1:18080:8080 sc-llm:current'
+ExecStop=/bin/sh -c 'exec /usr/bin/docker stop -t 20 sc-llm'
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-llm
+
+[Install]
+WantedBy=sc.target

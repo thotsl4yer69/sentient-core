@@ -1,0 +1,24 @@
+[Unit]
+Description=SC brain (conversation)
+PartOf=sc.target
+After=sc-memory.service mosquitto.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+Environment=SC_STATE_DIR=/var/lib/sc
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/bin/sh -c 'exec /opt/sc/current/venv/bin/python -m sentient.services.conversation'
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-brain
+
+[Install]
+WantedBy=sc.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=SC memory
+PartOf=sc.target
+After=redis-server.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_BIND=127.0.0.1
+Environment=SC_PORT=8001
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+Environment=SC_STATE_DIR=/var/lib/sc
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/bin/sh -c 'exec /opt/sc/current/venv/bin/python -m sentient.services.memory'
+Restart=on-failure
+RestartSec=5
+MemoryMax=512M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-memory
+
+[Install]
+WantedBy=sc.target

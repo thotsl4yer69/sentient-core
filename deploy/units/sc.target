@@ -1,0 +1,9 @@
+[Unit]
+Description=SC stack
+After=network-online.target
+
+# Member units opt in on their own. Installing this file does not start them,
+# so legacy units keep running until a one-unit retirement says otherwise.
+
+[Install]
+WantedBy=multi-user.target

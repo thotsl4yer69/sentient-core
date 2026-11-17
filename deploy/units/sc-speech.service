@@ -1,0 +1,27 @@
+[Unit]
+Description=SC speech (one audio owner)
+PartOf=sc.target
+After=sc-brain.service mosquitto.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+SupplementaryGroups=audio
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_BIND=127.0.0.1
+Environment=SC_PORT=8020
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+Environment=SC_STATE_DIR=/var/lib/sc
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/bin/sh -c 'exec /opt/sc/current/venv/bin/python -m sentient.services.voice'
+Restart=on-failure
+RestartSec=5
+MemoryMax=900M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-speech
+
+[Install]
+WantedBy=sc.target
