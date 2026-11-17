@@ -1,14 +1,7 @@
-# Sentient Core CLI Requirements
+# Sentient Core CLI dependencies.
 # Install with: pip install -r requirements-cli.txt
+# Versions match constraints.lock (Python 3.10).
 
-# MQTT Client - async support
-aiomqtt>=0.4.0
-
-# Terminal colors and styling
-colorama>=0.4.6
-
-# For production MQTT support (fallback)
-paho-mqtt>=1.7.1
-
-# Optional: for better logging
-python-json-logger>=2.0.7
+aiomqtt==2.5.1
+colorama==0.4.6
+paho-mqtt==2.2.0

@@ -1,0 +1,118 @@
+name: Off-device integration
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sentient-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mqtt-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Start mosquitto
+        run: |
+          set -euo pipefail
+          docker rm -f sc-mosquitto >/dev/null 2>&1 || true
+          docker run -d --name sc-mosquitto -p 1883:1883 eclipse-mosquitto:2.0.22 \
+            mosquitto -c /mosquitto-no-auth.conf
+          for _ in $(seq 1 30); do
+            if python -c 'import socket; s=socket.create_connection(("127.0.0.1", 1883), 2); s.close()'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs sc-mosquitto || true
+          exit 1
+      - name: Install sentient-core
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: MQTT publish and subscribe round-trip
+        env:
+          MQTT_HOST: 127.0.0.1
+          MQTT_PORT: "1883"
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import threading
+          import paho.mqtt.client as mqtt
+
+          host = os.environ["MQTT_HOST"]
+          port = int(os.environ["MQTT_PORT"])
+          topic = "sc/v1/health/ci"
+          connected = threading.Event()
+          subscribed = threading.Event()
+          received = []
+          failed = []
+
+          def on_connect(client, userdata, flags, reason_code, properties):
+              # paho 2 ReasonCode compares equal to its numeric value and has no int().
+              if reason_code != 0:
+                  failed.append(reason_code)
+              else:
+                  client.subscribe(topic, qos=1)
+              connected.set()
+
+          def on_subscribe(client, userdata, mid, reason_codes, properties):
+              subscribed.set()
+
+          def on_message(client, userdata, message):
+              received.append(message.payload)
+
+          client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="sc-ci-roundtrip")
+          client.on_connect = on_connect
+          client.on_subscribe = on_subscribe
+          client.on_message = on_message
+          client.connect(host, port, keepalive=30)
+          client.loop_start()
+          try:
+              if not connected.wait(10):
+                  raise SystemExit("broker did not accept the connection")
+              if failed:
+                  raise SystemExit(f"CONNACK refused: {failed[0]}")
+              if not subscribed.wait(10):
+                  raise SystemExit("broker did not confirm the subscription")
+              info = client.publish(topic, "ok", qos=1)
+              info.wait_for_publish(timeout=10)
+              deadline = threading.Event()
+              if not any(received):
+                  # on_message is delivered on the network thread; give it a moment
+                  for _ in range(50):
+                      if received:
+                          break
+                      deadline.wait(0.1)
+              if received != [b"ok"]:
+                  raise SystemExit(f"unexpected payloads: {received!r}")
+              print(f"round-trip ok {host}:{port} {topic}")
+          finally:
+              client.loop_stop()
+              client.disconnect()
+          PY
+      - name: Contract tests
+        env:
+          MQTT_HOST: 127.0.0.1
+          MQTT_PORT: "1883"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(tests/contract/test_*.py tests/contract/*_test.py)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "tests/contract has no tests yet; broker round-trip is the off-device check"
+            exit 0
+          fi
+          python -m pip install pytest pytest-asyncio
+          python -m pytest -q tests/contract
+      - name: Stop mosquitto
+        if: always()
+        run: docker rm -f sc-mosquitto >/dev/null 2>&1 || true
