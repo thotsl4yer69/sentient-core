@@ -26,7 +26,13 @@ jobs:
         run: |
           python3 -m py_compile tools/orin_reconcile.py tests/unit/test_orin_reconcile.py
           bash -n tools/orin_read_only_audit.sh systemd/deploy.sh systemd/install.sh
-      - name: Test one-at-a-time cutover, rollback, and safety gates
+      - name: Reject unfinished reconcile stubs
+        run: |
+          if grep -nE 'TODO|FIXME|NotImplementedError' tools/orin_reconcile.py tests/unit/test_orin_reconcile.py; then
+            echo 'stubs are not allowed in the one-unit retirement tool'
+            exit 1
+          fi
+      - name: Test one-at-a-time cutover, consumer map, backup gate, and rollback
         run: python3 -m unittest discover -s tests/unit -p test_orin_reconcile.py -v
       - name: Ensure retired bulk installers mutate nothing
         shell: bash
