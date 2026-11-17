@@ -1,0 +1,53 @@
+# Per-client ACL for the sc/v1 contract.
+# apply_acl.py loads this file into the Mosquitto dynamic-security plugin.
+# read = subscribe + receive, write = publish. No client is granted '#' .
+# sc-health may read only sc/v1/health/#. sc-compat is the temporary bridge
+# and the only client that can cross between sc/v1 and the legacy sentient tree.
+
+user sc-gateway
+topic read sc/v1/voice/wake
+topic read sc/v1/chat/stream
+topic read sc/v1/chat/output
+topic read sc/v1/tts/state
+topic read sc/v1/avatar/state
+topic write sc/v1/chat/input
+topic write sc/v1/turn/cancel
+topic write sc/v1/health/gateway
+
+user sc-brain
+topic read sc/v1/voice/wake
+topic read sc/v1/voice/transcript
+topic read sc/v1/chat/input
+topic read sc/v1/turn/cancel
+topic read sc/v1/tts/state
+topic write sc/v1/chat/stream
+topic write sc/v1/chat/output
+topic write sc/v1/tts/say
+topic write sc/v1/avatar/state
+topic write sc/v1/health/brain
+
+user sc-speech
+topic read sc/v1/tts/say
+topic read sc/v1/turn/cancel
+topic write sc/v1/voice/wake
+topic write sc/v1/voice/transcript
+topic write sc/v1/tts/state
+topic write sc/v1/health/speech
+
+user sc-buddy
+topic read sc/v1/chat/stream
+topic read sc/v1/chat/output
+topic write sc/v1/chat/input
+topic write sc/v1/health/buddy
+
+user sc-memory
+topic read sc/v1/chat/output
+topic write sc/v1/health/memory
+
+user sc-health
+topic read sc/v1/health/#
+topic write sc/v1/health/health
+
+user sc-compat
+topic readwrite sc/v1/#
+topic readwrite sentient/#
