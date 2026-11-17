@@ -1,0 +1,26 @@
+// Restart permission for the sc group, one exact unit at a time.
+// Unit names are literals. Patterns are not used.
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (!subject.isInGroup("sc")) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.lookup("verb") !== "restart") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    if (unit === "sc-brain.service" ||
+        unit === "sc-buddy.service" ||
+        unit === "sc-compat.service" ||
+        unit === "sc-gateway.service" ||
+        unit === "sc-health.service" ||
+        unit === "sc-llm.service" ||
+        unit === "sc-memory.service" ||
+        unit === "sc-speech.service" ||
+        unit === "sc.target") {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

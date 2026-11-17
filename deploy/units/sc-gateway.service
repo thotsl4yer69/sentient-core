@@ -1,0 +1,27 @@
+[Unit]
+Description=SC gateway API (OpenAI chat, STT, TTS)
+PartOf=sc.target
+After=sc-brain.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_BIND=0.0.0.0
+Environment=SC_PORT=8443
+Environment=SC_TLS=1
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+Environment=SC_STATE_DIR=/var/lib/sc
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/bin/sh -c 'exec /opt/sc/current/venv/bin/python -m sentient.services.gateway'
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-gateway
+
+[Install]
+WantedBy=sc.target

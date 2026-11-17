@@ -1,0 +1,24 @@
+[Unit]
+Description=SC legacy topic bridge
+PartOf=sc.target
+After=mosquitto.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+Environment=SC_STATE_DIR=/var/lib/sc
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/bin/sh -c 'exec /opt/sc/current/venv/bin/python -m sentient.services.compat'
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-compat
+
+[Install]
+WantedBy=sc.target
