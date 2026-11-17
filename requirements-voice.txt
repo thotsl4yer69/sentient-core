@@ -1,18 +1,12 @@
-# Sentient Core - Voice Interface Requirements
+# Sentient Core voice dependencies that the code imports.
+# Versions match constraints.lock (CPython 3.10, aarch64).
+# PyAudio has no cp310 aarch64 wheel on PyPI; deploy/build-wheels.sh
+# compiles the pinned sdist inside the Ubuntu 22.04 arm64 container.
+# webrtcvad-wheels provides the webrtcvad module as a binary wheel.
 
-# MQTT client with async support
-aiomqtt>=2.0.0
-paho-mqtt>=1.6.0
-
-# Audio processing
-PyAudio>=0.2.13
-webrtcvad>=2.0.10
-
-# Whisper STT
-faster-whisper>=1.0.0
-
-# NumPy for audio processing
-numpy>=1.24.0
-
-# Utilities
-python-dotenv>=1.0.0
+aiomqtt==2.5.1
+paho-mqtt==2.2.0
+PyAudio==0.2.14
+webrtcvad-wheels==2.0.14.post1
+numpy==2.2.6
+openwakeword==0.6.0

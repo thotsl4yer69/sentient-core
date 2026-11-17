@@ -12,7 +12,7 @@ concurrency:
 jobs:
   source-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,4 +43,81 @@ jobs:
           src.write_text(scripts[0])
           subprocess.run(['node', '--check', str(src)], check=True)
           assert './models/athena.glb' in html
+          PY
+      - name: Editable install on Python 3.10
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python - <<'PY'
+          import importlib
+          import importlib.util
+          import sentient
+          import sentient.config
+          import sentient.common.mqtt_topics
+          modules = [
+              "fastapi",
+              "uvicorn",
+              "websockets",
+              "pydantic",
+              "starlette",
+              "aiomqtt",
+              "paho.mqtt.client",
+              "redis",
+              "numpy",
+              "aiohttp",
+              "tomli",
+              "colorama",
+              "onnxruntime",
+          ]
+          for name in modules:
+              importlib.import_module(name)
+              print("import ok", name)
+          for banned in ("torch", "sentence_transformers"):
+              if importlib.util.find_spec(banned) is not None:
+                  raise SystemExit(f"{banned} must not be installed")
+          import paho.mqtt.client as mqtt
+          mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1, client_id="ci")
+          mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+          print("editable install ok", sentient.__file__)
+          PY
+      - name: Fetch MiniLM and check ONNX embeddings
+        run: |
+          set -euo pipefail
+          python tools/fetch_minilm.py
+          python -m pytest -q tests/unit/test_minilm.py
+      - name: Verify pinned CPython 3.10 aarch64 lock hashes
+        run: |
+          set -euo pipefail
+          bash -n deploy/build-wheels.sh
+          rm -rf /tmp/wheelhouse
+          mkdir -p /tmp/wheelhouse
+          python -m pip download \
+            --dest /tmp/wheelhouse \
+            --require-hashes \
+            --only-binary=:all: \
+            --python-version 310 \
+            --implementation cp \
+            --abi cp310 \
+            --abi abi3 \
+            --abi none \
+            --platform manylinux_2_35_aarch64 \
+            --platform manylinux_2_34_aarch64 \
+            --platform manylinux_2_28_aarch64 \
+            --platform manylinux_2_17_aarch64 \
+            --platform manylinux2014_aarch64 \
+            --platform any \
+            -r constraints.lock
+          python - <<'PY'
+          from pathlib import Path
+          files = sorted(p.name for p in Path("/tmp/wheelhouse").iterdir())
+          print(f"downloaded {len(files)} aarch64/pure artifacts")
+          needed = ("onnxruntime", "numpy", "fastapi", "aiohttp", "tflite_runtime", "opencv_python_headless", "webrtcvad")
+          blob = " ".join(files)
+          missing = [name for name in needed if name not in blob]
+          if missing:
+              raise SystemExit(f"lock download missing {missing}")
+          if any(name.startswith(("torch-", "sentence_transformers-")) for name in files):
+              raise SystemExit("torch or sentence-transformers leaked into the lock")
+          print("lock hashes ok")
           PY

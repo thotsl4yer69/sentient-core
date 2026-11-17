@@ -88,6 +88,7 @@ def _apply_env_overrides(config: SentientConfig) -> SentientConfig:
 
         # Service port overrides
         "SENTIENT_MEMORY_PORT": lambda v: setattr(config.memory, "port", int(v)),
+        "SENTIENT_MEMORY_MODELS_DIR": lambda v: setattr(config.memory, "models_dir", v),
         "SENTIENT_CONTEMPLATION_PORT": lambda v: setattr(config.contemplation, "port", int(v)),
         "SENTIENT_PERCEPTION_PORT": lambda v: setattr(config.perception, "port", int(v)),
         "SENTIENT_AVATAR_BRIDGE_WS_PORT": lambda v: setattr(config.avatar, "bridge_ws_port", int(v)),

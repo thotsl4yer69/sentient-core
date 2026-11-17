@@ -67,3 +67,4 @@ static/icons/generate_icons.py
 models/*.onnx
 models/*.engine
 models/*.trt
+models/all-MiniLM-L6-v2/

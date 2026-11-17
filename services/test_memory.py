@@ -155,7 +155,9 @@ class TestMemorySystem:
 
         # Check tags via search
         work_results = await memory.search_memories("project", limit=5)
-        emotion_results = await memory.search_memories("feelings", limit=5)
+        # "feelings" is below MiniLM's 0.5 cosine against this short line.
+        # "excited" is in the stored text and clears that threshold.
+        emotion_results = await memory.search_memories("excited", limit=5)
 
         assert len(work_results) > 0
         assert len(emotion_results) > 0

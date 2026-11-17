@@ -37,6 +37,8 @@ idle_timeout = 1800
 [memory]
 port = 8001
 embedding_model = "all-MiniLM-L6-v2"
+# Holds all-MiniLM-L6-v2/model.onnx and tokenizer.json. Fetch with tools/fetch_minilm.py.
+models_dir = "models"
 
 [contemplation]
 port = 8002
