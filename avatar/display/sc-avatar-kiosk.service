@@ -1,0 +1,24 @@
+[Unit]
+Description=SC hologram Chromium kiosk
+PartOf=sc.target
+After=sc-avatar-static.service
+Wants=sc-avatar-static.service
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+SupplementaryGroups=render video input audio
+Environment=XDG_RUNTIME_DIR=/run/sc-avatar
+Environment=WAYLAND_DISPLAY=wayland-1
+ExecStartPre=/usr/bin/install -d -o sc -g sc -m 0700 /run/sc-avatar
+ExecStart=/opt/sc/avatar-display/bin/kiosk.sh
+Restart=on-failure
+RestartSec=2
+MemoryMax=2G
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-avatar-kiosk
+
+[Install]
+WantedBy=sc.target
