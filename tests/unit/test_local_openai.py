@@ -96,6 +96,8 @@ class ContractServerMixin:
         self.posts = []
         self.headers = []
         self.ps_models = []
+        self.slow_writes = 0
+        self.slow_closed = False
         app = web.Application()
 
         async def models(_request):
@@ -123,8 +125,10 @@ class ContractServerMixin:
                             '{"choices":[{"delta":{"content":"%s"}}]}\n\n' % index
                         )
                         await response.write(b"data: " + body.encode())
+                        self.slow_writes += 1
                         await asyncio.sleep(0.05)
                     except (ConnectionError, ConnectionResetError, RuntimeError):
+                        self.slow_closed = True
                         return response
                 try:
                     await response.write(b"data: [DONE]\n\n")
@@ -292,6 +296,43 @@ class AdapterContractTests(ContractServerMixin, unittest.IsolatedAsyncioTestCase
         self.assertGreaterEqual(len(parts), 1)
         self.assertLess(len(parts), 40)
 
+    async def test_cancelling_the_consumer_closes_the_inference_response(self):
+        received = []
+
+        async def consume():
+            async for token in self.client.chat_stream(
+                "loaded-gguf.gguf",
+                [{"role": "user", "content": "SLOW_STREAM"}],
+                turn_id="orphan",
+                priority="background",
+                max_duration=10,
+                deadline=5,
+            ):
+                received.append(token)
+
+        task = asyncio.create_task(consume())
+        for _ in range(50):
+            if received:
+                break
+            await asyncio.sleep(0.02)
+        self.assertTrue(received)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        for _ in range(30):
+            if self.slow_closed:
+                break
+            await asyncio.sleep(0.02)
+        self.assertTrue(self.slow_closed)
+        self.assertLess(self.slow_writes, 40)
+        self.assertNotIn("orphan", self.client._flights)
+        self.assertFalse(await self.client.cancel("orphan"))
+        text = await self.client.generate(
+            "loaded-gguf.gguf", "Say READY", turn_id="after-cancel", max_duration=5,
+        )
+        self.assertEqual(text, "READY")
+        self.assertEqual(self.client.outcomes["after-cancel"].status, "ok")
+
 
 class FailoverTests(ContractServerMixin, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -434,6 +475,72 @@ class BenchmarkHarnessTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.runner.cleanup()
+
+    def test_ollama_selects_the_requested_model_not_the_first(self):
+        ids = ["unrelated.gguf", "wanted.gguf"]
+        chosen, error = self.bench.choose_request_model("ollama", "wanted.gguf", ids)
+        self.assertEqual(chosen, "wanted.gguf")
+        self.assertIsNone(error)
+        chosen, error = self.bench.choose_request_model("ollama", "missing.gguf", ids)
+        self.assertIsNone(chosen)
+        self.assertIn("missing.gguf", error)
+        chosen, error = self.bench.choose_request_model("llama.cpp", "wanted.gguf", ids)
+        self.assertIsNone(chosen)
+        self.assertIn("unrelated.gguf", error)
+        chosen, error = self.bench.choose_request_model(
+            "llama.cpp", "gemma.gguf", ["/models/gemma.gguf"]
+        )
+        self.assertEqual(chosen, "/models/gemma.gguf")
+        self.assertIsNone(error)
+
+    async def test_ollama_benchmark_posts_the_requested_model(self):
+        posted = []
+        app = web.Application()
+
+        async def models(_request):
+            return web.json_response({
+                "data": [{"id": "unrelated.gguf"}, {"id": "wanted.gguf"}]
+            })
+
+        async def completions(request):
+            payload = await request.json()
+            posted.append(payload["model"])
+            response = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream"})
+            await response.prepare(request)
+            await response.write(b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n')
+            await response.write(b'data: {"choices":[{"delta":{}}],"usage":{"completion_tokens":1}}\n\n')
+            await response.write(b"data: [DONE]\n\n")
+            await response.write_eof()
+            return response
+
+        app.router.add_get("/v1/models", models)
+        app.router.add_post("/v1/chat/completions", completions)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
+        url = f"http://127.0.0.1:{port}"
+        try:
+            hit = await asyncio.to_thread(
+                self.bench.bench_backend,
+                "ollama", url, "wanted.gguf", "Say READY", 8, 10.0,
+                {"index": None, "name": None, "source": "unavailable"},
+            )
+            missed = await asyncio.to_thread(
+                self.bench.bench_backend,
+                "ollama", url, "missing.gguf", "Say READY", 8, 10.0,
+                {"index": None, "name": None, "source": "unavailable"},
+            )
+        finally:
+            await runner.cleanup()
+        self.assertTrue(hit["ok"])
+        self.assertEqual(hit["reported_model"], "wanted.gguf")
+        self.assertFalse(hit["model_mismatch"])
+        self.assertEqual(posted, ["wanted.gguf"])
+        self.assertFalse(missed["ok"])
+        self.assertIn("missing.gguf", missed["error"])
+        self.assertEqual(posted, ["wanted.gguf"])
 
     def test_parsers(self):
         sample = (

@@ -90,6 +90,7 @@ class LocalOpenAIClient:
         self.last_outcome: Optional[GenerationOutcome] = None
         self.outcomes: Dict[str, GenerationOutcome] = {}
         self.requeue: List[GenerationOutcome] = []
+        self._cleanup_tasks: set = set()
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -211,6 +212,20 @@ class LocalOpenAIClient:
         if self._holder is flight:
             self._holder = None
         flight.released.set()
+
+    def _close_response_now(self, flight: _Flight) -> None:
+        """Stop the backend even if this task is already being cancelled.
+
+        ``response.close()`` is synchronous. ``CancelledError`` and
+        ``GeneratorExit`` skip the ``except`` handlers, so the slot must not
+        be released while the HTTP response is still open.
+        """
+        response = flight.response
+        if response is not None and not response.closed:
+            response.close()
+        opener = flight.opener
+        if opener is not None and not opener.done():
+            opener.cancel()
 
     async def _stop_task(self, task: asyncio.Task) -> None:
         if task.done():
@@ -476,6 +491,11 @@ class LocalOpenAIClient:
                 self._finish(outcome, "error", str(exc))
                 log.error("Local model %s failed: %s", kind, exc)
         finally:
+            self._close_response_now(flight)
+            if not flight.exited and flight.cm is not None:
+                cleanup = asyncio.create_task(self._close_cm(flight))
+                self._cleanup_tasks.add(cleanup)
+                cleanup.add_done_callback(self._cleanup_tasks.discard)
             self._release_slot(flight)
             self._flights.pop(flight.turn_id, None)
 

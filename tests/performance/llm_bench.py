@@ -259,12 +259,50 @@ def _request_json(url: str, timeout: float) -> Dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def reported_model_id(base_url: str, timeout: float = 5.0) -> str:
+def list_model_ids(base_url: str, timeout: float = 5.0) -> List[str]:
     payload = _request_json(_join_url(base_url, "/v1/models"), timeout)
     data = payload.get("data") or []
-    if not data or not data[0].get("id"):
+    ids = [str(item["id"]) for item in data if item.get("id")]
+    if not ids:
         raise RuntimeError(f"No model id from {base_url}")
-    return str(data[0]["id"])
+    return ids
+
+
+def reported_model_id(base_url: str, timeout: float = 5.0) -> str:
+    """First id from ``/v1/models``. llama.cpp serves one loaded GGUF."""
+    return list_model_ids(base_url, timeout)[0]
+
+
+def _model_matches(requested: str, candidate: str) -> bool:
+    if not requested or not candidate:
+        return False
+    return requested == candidate or requested in candidate or candidate in requested
+
+
+def choose_request_model(backend: str, requested: str, model_ids: List[str]):
+    """Pick the id to send, or an error when that would measure the wrong model.
+
+    llama.cpp has one loaded GGUF, so the request uses the id the server
+    reports. Ollama may list several installed models; the request uses the
+    requested id, not whichever one happens to be first.
+    """
+    if not model_ids:
+        return None, "server returned no model id"
+    if backend == "ollama":
+        if not requested:
+            return None, "Ollama benchmark requires --model"
+        exact = [model_id for model_id in model_ids if model_id == requested]
+        if exact:
+            return exact[0], None
+        partial = [model_id for model_id in model_ids if _model_matches(requested, model_id)]
+        if not partial:
+            listed = ", ".join(model_ids)
+            return None, f"requested model {requested!r} is not loaded (server has {listed})"
+        return partial[0], None
+    loaded = model_ids[0]
+    if requested and not _model_matches(requested, loaded):
+        return None, f"loaded model {loaded!r} does not match requested {requested!r}"
+    return loaded, None
 
 
 def _sse_content(line: str) -> Optional[str]:
@@ -392,11 +430,17 @@ def bench_backend(
 ) -> Dict[str, Any]:
     """One measured generation. A down endpoint is a recorded error, not a crash."""
     try:
-        reported = reported_model_id(base_url, timeout=min(timeout, 8))
+        model_ids = list_model_ids(base_url, timeout=min(timeout, 8))
     except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
         return _row_error(backend, base_url, model, power_mode, str(exc))
-    request_model = reported or model
-    mismatch = bool(model and reported and model not in reported and reported not in model)
+    request_model, select_error = choose_request_model(backend, model, model_ids)
+    if select_error:
+        row = _row_error(backend, base_url, model, power_mode, select_error)
+        row["reported_model"] = model_ids[0]
+        row["model_mismatch"] = True
+        return row
+    reported = request_model
+    mismatch = False
     active = MemorySampler()
     active.start()
     measured = None
