@@ -21,6 +21,7 @@ dependencies = [
     "tomli==2.5.0; python_version<'3.11'",
     "colorama==0.4.6",
     "onnxruntime==1.23.2",
+    "tokenizers==0.23.3",
 ]
 
 [project.optional-dependencies]

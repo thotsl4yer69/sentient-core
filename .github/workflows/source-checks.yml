@@ -81,6 +81,11 @@ jobs:
           mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
           print("editable install ok", sentient.__file__)
           PY
+      - name: Fetch MiniLM and check ONNX embeddings
+        run: |
+          set -euo pipefail
+          python tools/fetch_minilm.py
+          python -m pytest -q tests/unit/test_minilm.py
       - name: Verify pinned CPython 3.10 aarch64 lock hashes
         run: |
           set -euo pipefail

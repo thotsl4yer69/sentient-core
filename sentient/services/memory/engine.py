@@ -10,7 +10,7 @@ Architecture:
 
 Dependencies:
 - redis: Redis client
-- sentence-transformers: Semantic embeddings
+- onnxruntime and tokenizers: all-MiniLM-L6-v2 embeddings
 - aiomqtt: Async MQTT event publishing
 """
 
@@ -23,12 +23,12 @@ import hashlib
 
 import redis.asyncio as redis
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from aiomqtt import Client as MQTTClient
 
 from sentient.config import get_config
 from sentient.common.logging import setup_logging
 from sentient.common import mqtt_topics
+from sentient.services.memory.minilm import MiniLMEncoder
 
 logger = setup_logging("memory")
 
@@ -105,10 +105,10 @@ class MemorySystem:
         self._mqtt_client: Optional[MQTTClient] = None
         self.mqtt_connected = False
 
-        # Sentence transformer for embeddings
+        # all-MiniLM-L6-v2 via ONNX Runtime (mean pool, then L2 normalise).
         model_name = embedding_model or cfg.memory.embedding_model
         logger.info(f"Loading embedding model: {model_name}")
-        self.encoder = SentenceTransformer(model_name)
+        self.encoder = MiniLMEncoder(model_name, models_dir=cfg.memory.models_dir)
         self.embedding_dim = self.encoder.get_sentence_embedding_dimension()
 
         # In-memory embedding cache for fast search

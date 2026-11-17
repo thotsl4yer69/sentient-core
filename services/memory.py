@@ -10,7 +10,7 @@ Architecture:
 
 Dependencies:
 - redis: Redis client
-- sentence-transformers: Semantic embeddings
+- onnxruntime and tokenizers: all-MiniLM-L6-v2 embeddings
 - paho-mqtt: MQTT event publishing
 """
 
@@ -23,11 +23,17 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple, Any
 import hashlib
 import os
+import sys
 
 import redis.asyncio as redis
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import paho.mqtt.client as mqtt
+
+# Legacy entry point. The encoder lives in the installable package.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+from sentient.services.memory.minilm import MiniLMEncoder
 
 # Configure logging
 logging.basicConfig(
@@ -85,7 +91,8 @@ class MemorySystem:
         redis_db: int = 0,
         mqtt_broker: str = "localhost",
         mqtt_port: int = 1883,
-        embedding_model: str = "all-MiniLM-L6-v2"
+        embedding_model: str = "all-MiniLM-L6-v2",
+        models_dir: Optional[str] = None,
     ):
         """Initialize memory system."""
         self.redis_host = redis_host
@@ -109,12 +116,13 @@ class MemorySystem:
         self.redis_client: Optional[redis.Redis] = None
 
         # MQTT client
-        self.mqtt_client = mqtt.Client()
+        # paho-mqtt 2 still accepts the VERSION1 callbacks this module uses.
+        self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
         self.mqtt_connected = False
 
-        # Sentence transformer for embeddings
+        # all-MiniLM-L6-v2 via ONNX Runtime (mean pool, then L2 normalise).
         logger.info(f"Loading embedding model: {embedding_model}")
-        self.encoder = SentenceTransformer(embedding_model)
+        self.encoder = MiniLMEncoder(embedding_model, models_dir=models_dir)
         self.embedding_dim = self.encoder.get_sentence_embedding_dimension()
 
         logger.info("MemorySystem initialized")

@@ -72,6 +72,8 @@ class MemoryConfig:
     """Memory service configuration."""
     port: int = 8001
     embedding_model: str = "all-MiniLM-L6-v2"
+    # Directory of model folders, or the all-MiniLM-L6-v2 directory itself.
+    models_dir: str = "models"
 
 
 @dataclass
