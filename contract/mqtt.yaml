@@ -1,0 +1,396 @@
+# Machine-readable orin/v1 MQTT contract.
+# WS5 (voice) and WS7 (gateway) import sentient.common.mqtt_topics, which is
+# generated from this file. Keep topic strings stable.
+contract_version: 1
+prefix: orin/v1
+description: "Every payload carries ts and source. turn_id is required wherever a turn exists."
+loop_guard:
+  field: bridge
+  value: sc-compat
+topics:
+  - id: voice/wake
+    constant: ORIN_VOICE_WAKE
+    topic: orin/v1/voice/wake
+    publishers:
+      - sc-speech
+    subscribers:
+      - sc-brain
+      - sc-gateway
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        confidence:
+          type: number
+  - id: voice/transcript
+    constant: ORIN_VOICE_TRANSCRIPT
+    topic: orin/v1/voice/transcript
+    publishers:
+      - sc-speech
+    subscribers:
+      - sc-brain
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - text
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        text:
+          type: string
+        confidence:
+          type: number
+  - id: chat/input
+    constant: ORIN_CHAT_INPUT
+    topic: orin/v1/chat/input
+    publishers:
+      - sc-gateway
+      - sc-buddy
+    subscribers:
+      - sc-brain
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - text
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        text:
+          type: string
+        user:
+          type: string
+        kind:
+          type: string
+          enum:
+            - voice
+            - chat
+            - background
+  - id: chat/stream
+    constant: ORIN_CHAT_STREAM
+    topic: orin/v1/chat/stream
+    publishers:
+      - sc-brain
+    subscribers:
+      - sc-gateway
+      - sc-buddy
+    qos: 0
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - token
+        - partial
+        - done
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        token:
+          type: string
+        partial:
+          type: string
+        done:
+          type: boolean
+        cancelled:
+          type: boolean
+  - id: chat/output
+    constant: ORIN_CHAT_OUTPUT
+    topic: orin/v1/chat/output
+    publishers:
+      - sc-brain
+    subscribers:
+      - sc-gateway
+      - sc-buddy
+      - sc-memory
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - text
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        text:
+          type: string
+        emotion:
+          type: string
+        cancelled:
+          type: boolean
+        user:
+          type: string
+        attempt:
+          type: integer
+        reason:
+          type: string
+          enum:
+            - barge-in
+            - superseded
+            - deadline
+            - client
+            - queue_deadline
+            - generation_deadline
+            - error
+  - id: turn/cancel
+    constant: ORIN_TURN_CANCEL
+    topic: orin/v1/turn/cancel
+    publishers:
+      - sc-speech
+      - sc-gateway
+    subscribers:
+      - sc-brain
+      - sc-speech
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - reason
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        reason:
+          type: string
+          enum:
+            - barge-in
+            - superseded
+            - deadline
+            - client
+  - id: tts/say
+    constant: ORIN_TTS_SAY
+    topic: orin/v1/tts/say
+    publishers:
+      - sc-brain
+    subscribers:
+      - sc-speech
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - text
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        text:
+          type: string
+        emotion:
+          type: string
+  - id: tts/state
+    constant: ORIN_TTS_STATE
+    topic: orin/v1/tts/state
+    publishers:
+      - sc-speech
+    subscribers:
+      - sc-brain
+      - sc-gateway
+    qos: 1
+    retain: false
+    lwt: false
+    turn_id: required
+    payload:
+      required:
+        - turn_id
+        - ts
+        - source
+        - state
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        state:
+          type: string
+          enum:
+            - queued
+            - started
+            - playing
+            - completed
+            - stopped
+            - failed
+  - id: avatar/state
+    constant: ORIN_AVATAR_STATE
+    topic: orin/v1/avatar/state
+    publishers:
+      - sc-brain
+    subscribers:
+      - sc-gateway
+    qos: 0
+    retain: true
+    lwt: false
+    turn_id: optional
+    payload:
+      required:
+        - ts
+        - source
+        - state
+      properties:
+        turn_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        state:
+          type: string
+        emotion:
+          type: string
+  - id: health/{service}
+    constant: ORIN_HEALTH
+    topic: orin/v1/health/{service}
+    publishers:
+      - sc-*
+    subscribers:
+      - sc-health
+    qos: 1
+    retain: true
+    lwt: true
+    turn_id: absent
+    payload:
+      required:
+        - ts
+        - source
+        - status
+      properties:
+        ts:
+          type: string
+          format: date-time
+        source:
+          type: string
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - down
+        service:
+          type: string
+bridges:
+  - legacy: sentient/persona/chat/input
+    orin: orin/v1/chat/input
+    direction: both
+  - legacy: sentient/chat/input
+    orin: orin/v1/chat/input
+    direction: both
+  - legacy: sentient/wake/detected
+    orin: orin/v1/voice/wake
+    direction: both
+  - legacy: sentient/voice/transcription
+    orin: orin/v1/voice/transcript
+    direction: both
+  - legacy: sentient/chat/output
+    orin: orin/v1/chat/output
+    direction: both
+    also_legacy:
+      - sentient/persona/chat/output
+      - sentient/persona/response
+  - legacy: sentient/chat/stream
+    orin: orin/v1/chat/stream
+    direction: both
+  - legacy: sentient/tts/stop
+    orin: orin/v1/turn/cancel
+    direction: both
+  - legacy: sentient/tts/request
+    orin: orin/v1/tts/say
+    direction: both
+    also_legacy:
+      - sentient/tts/speak
+  - legacy: sentient/tts/status
+    orin: orin/v1/tts/state
+    direction: both
+    fanout_topics:
+      - when: started
+        topic: sentient/tts/started
+      - when: playing
+        topic: sentient/tts/started
+      - when: completed
+        topic: sentient/tts/completed
+      - when: stopped
+        topic: sentient/tts/completed
+      - when: failed
+        topic: sentient/tts/completed
+  - legacy: sentient/avatar/state
+    orin: orin/v1/avatar/state
+    direction: both
+    fanout_topics:
+      - when: emotion
+        topic: sentient/avatar/expression
+      - when: emotion
+        topic: sentient/persona/emotion
+  - legacy: sentient/avatar/expression
+    orin: orin/v1/avatar/state
+    direction: to_orin
