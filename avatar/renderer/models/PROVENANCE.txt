@@ -1,0 +1,9 @@
+MPFB human, used as the open test avatar so the renderer runs before Jack's Tripo export exists.
+
+Source: https://github.com/met4citizen/TalkingHead/blob/b3e277b3b46f88e557bf28a2c5612a5b04e075c3/avatars/mpfb.glb
+TalkingHead commit: b3e277b3b46f88e557bf28a2c5612a5b04e075c3
+Upstream sha256: 63c645a2a863b9972e9a9c2ed576a1de4c390b8475508e1473e69c87a3ee299c
+Licence: CC0, as declared by the TalkingHead author for this avatar.
+
+This copy adds a zero-delta viseme_sil morph (the upstream file has the other 14 Oculus visemes) and is compressed with @gltf-transform/cli@4.2.1: meshopt, WebP, texture size 1024, simplify off. Shipped sha256: bd8a7e8729909b63e7cc645650ba9686ec8ded7978a974221bc7941b874ffa4f
+Triangle count is unchanged (83686) and above the 30k to 60k production band. The validator reports that. It is a stand-in, not the hologram character.
