@@ -247,9 +247,13 @@ class ConversationService:
             self.service_health['mqtt'] = True
             logger.info(f"Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
 
-            # Subscribe to input topics
-            # await self.mqtt_client.subscribe(TOPIC_CHAT_INPUT)  # Disabled: cortana service handles this
-            logger.info(f"Subscribed to {TOPIC_CHAT_INPUT}")
+            # sentient/persona/chat/input stays with the cortana service.
+            # sc-compat is what subscribes to it and bridges it onto
+            # sc/v1/chat/input. Log only a subscription that was requested.
+            logger.info(
+                "Not subscribed to %s; cortana owns it and sc-compat bridges it to sc/v1/chat/input",
+                TOPIC_CHAT_INPUT,
+            )
 
             await self.mqtt_client.subscribe(TOPIC_WAKE_DETECTED)
             logger.info(f"Subscribed to {TOPIC_WAKE_DETECTED}")
