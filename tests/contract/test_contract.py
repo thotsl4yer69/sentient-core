@@ -1,4 +1,4 @@
-"""The orin/v1 document matches the redesign and the generated Python constants."""
+"""The sc/v1 document matches the redesign and the generated Python constants."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from sentient.services.conversation.contract import (
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Approved topic table. Prefix is orin/v1, the contract WS5 and WS7 import.
+# Approved topic table. Prefix is sc/v1, the contract WS5 and WS7 import.
 DESIGN = [
     ("voice/wake", ["sc-speech"], ["sc-brain", "sc-gateway"], 1, False, False, "required"),
     ("voice/transcript", ["sc-speech"], ["sc-brain"], 1, False, False, "required"),
@@ -59,7 +59,7 @@ class ContractDocumentTests(unittest.TestCase):
         self.assertEqual([topic["id"] for topic in topics], [row[0] for row in DESIGN])
         for topic, row in zip(topics, DESIGN):
             ident, publishers, subscribers, qos, retain, lwt, turn_policy = row
-            self.assertEqual(topic["topic"], f"orin/v1/{ident}")
+            self.assertEqual(topic["topic"], f"sc/v1/{ident}")
             self.assertEqual(topic["publishers"], publishers)
             self.assertEqual(topic["subscribers"], subscribers)
             self.assertEqual(topic["qos"], qos)
@@ -80,7 +80,7 @@ class ContractDocumentTests(unittest.TestCase):
             if bridge["legacy"] == "sentient/persona/chat/input"
         ]
         self.assertEqual(len(match), 1)
-        self.assertEqual(match[0]["orin"], "orin/v1/chat/input")
+        self.assertEqual(match[0]["orin"], "sc/v1/chat/input")
         self.assertIn(match[0]["direction"], ("both", "to_orin"))
 
     def test_generated_block_matches_the_source_file(self):
@@ -93,7 +93,7 @@ class ContractDocumentTests(unittest.TestCase):
             self.assertEqual(getattr(mqtt_topics, name), topic)
 
     def test_health_topic_rejects_wildcards(self):
-        self.assertEqual(orin_health_topic("sc-brain"), "orin/v1/health/sc-brain")
+        self.assertEqual(orin_health_topic("sc-brain"), "sc/v1/health/sc-brain")
         for bad in ("", "sc/brain", "sc-brain/+", "sc-brain/#"):
             with self.assertRaises(ValueError):
                 orin_health_topic(bad)

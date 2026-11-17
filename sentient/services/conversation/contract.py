@@ -1,6 +1,6 @@
 """Load and check contract/mqtt.yaml without a third-party YAML package.
 
-The file is the source of truth for orin/v1 topics. sentient.common.mqtt_topics
+The file is the source of truth for sc/v1 topics. sentient.common.mqtt_topics
 keeps a generated copy of the topic strings so other services can import
 constants without parsing YAML.
 """
@@ -104,7 +104,7 @@ def extract_generated_block(source: str) -> str:
     start = source.find(GENERATED_START)
     end = source.find(GENERATED_END)
     if start < 0 or end < 0 or end < start:
-        raise ValueError("mqtt_topics.py is missing the generated orin/v1 block")
+        raise ValueError("mqtt_topics.py is missing the generated sc/v1 block")
     end = end + len(GENERATED_END)
     block = source[start:end]
     if not block.endswith("\n"):
@@ -136,7 +136,7 @@ def assert_constants_match(contract: dict[str, Any], module: Any) -> None:
 
 
 def validate_payload(topic_id: str, payload: Any, contract: dict[str, Any]) -> list[str]:
-    """Return schema errors for one orin/v1 payload. Empty means valid."""
+    """Return schema errors for one sc/v1 payload. Empty means valid."""
     spec = topic_by_id(contract).get(topic_id)
     if spec is None:
         return [f"unknown topic {topic_id}"]
@@ -230,8 +230,8 @@ def _check_type(name: str, value: Any, rule: dict[str, Any]) -> list[str]:
 
 def _validate_document(document: dict[str, Any]) -> None:
     prefix = document.get("prefix")
-    if prefix != "orin/v1":
-        raise ValueError(f"prefix must be orin/v1, got {prefix!r}")
+    if prefix != "sc/v1":
+        raise ValueError(f"prefix must be sc/v1, got {prefix!r}")
     guard = document.get("loop_guard") or {}
     if guard.get("field") != "bridge" or guard.get("value") != "sc-compat":
         raise ValueError("loop_guard must be bridge=sc-compat")
@@ -278,10 +278,10 @@ def _validate_document(document: dict[str, Any]) -> None:
             raise ValueError(f'bad bridge direction for {bridge["legacy"]}')
         if bridge["legacy"] == "sentient/persona/chat/input" and bridge["direction"] in ("both", "to_orin"):
             persona = True
-            if bridge["orin"] != "orin/v1/chat/input":
-                raise ValueError("persona chat input must map to orin/v1/chat/input")
+            if bridge["orin"] != "sc/v1/chat/input":
+                raise ValueError("persona chat input must map to sc/v1/chat/input")
     if not persona:
-        raise ValueError("contract must bridge sentient/persona/chat/input onto orin/v1/chat/input")
+        raise ValueError("contract must bridge sentient/persona/chat/input onto sc/v1/chat/input")
 
 
 def _tokenize(text: str) -> list[_TOKEN]:

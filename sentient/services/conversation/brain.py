@@ -31,7 +31,7 @@ SERVICE = "sc-brain"
 
 
 class ConversationBrain:
-    """MQTT front for :class:`TurnEngine` on the orin/v1 contract."""
+    """MQTT front for :class:`TurnEngine` on the sc/v1 contract."""
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-"""sc-compat: bridge legacy ``sentient/`` topics and ``orin/v1`` while both stacks run.
+"""sc-compat: bridge legacy ``sentient/`` topics and ``sc/v1`` while both stacks run.
 
 AIRI and the avatar bridge keep publishing and subscribing to the legacy
 topics, including ``sentient/persona/chat/input``, which the v2 orchestrator

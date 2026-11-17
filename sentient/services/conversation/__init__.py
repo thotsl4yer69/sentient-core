@@ -1,7 +1,7 @@
 """Conversation service.
 
 ``ConversationOrchestrator`` is the existing v2 orchestrator.
-``ConversationBrain`` is sc-brain: it owns orin/v1 turns and is loaded lazily
+``ConversationBrain`` is sc-brain: it owns sc/v1 turns and is loaded lazily
 so importing the orchestrator does not open an MQTT session.
 """
 

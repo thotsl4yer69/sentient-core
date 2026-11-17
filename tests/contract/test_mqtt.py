@@ -13,14 +13,14 @@ from tests.contract.broker import Collector, Mosquitto
 from tests.contract.fakes import ScriptedLLM
 
 ORIN_TOPICS = [
-    ("orin/v1/chat/input", 1),
-    ("orin/v1/chat/stream", 0),
-    ("orin/v1/chat/output", 1),
-    ("orin/v1/tts/say", 1),
-    ("orin/v1/avatar/state", 0),
-    ("orin/v1/voice/wake", 1),
-    ("orin/v1/turn/cancel", 1),
-    ("orin/v1/health/#", 1),
+    ("sc/v1/chat/input", 1),
+    ("sc/v1/chat/stream", 0),
+    ("sc/v1/chat/output", 1),
+    ("sc/v1/tts/say", 1),
+    ("sc/v1/avatar/state", 0),
+    ("sc/v1/voice/wake", 1),
+    ("sc/v1/turn/cancel", 1),
+    ("sc/v1/health/#", 1),
     ("sentient/persona/chat/input", 1),
     ("sentient/chat/input", 1),
     ("sentient/chat/output", 1),
@@ -51,10 +51,10 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
             try:
                 await asyncio.wait_for(ready.wait(), 3)
                 await collector.wait_until(
-                    lambda messages: bool(_on(messages, "orin/v1/health/sc-brain", status="healthy")),
+                    lambda messages: bool(_on(messages, "sc/v1/health/sc-brain", status="healthy")),
                     timeout=2,
                 )
-                await collector.publish("orin/v1/chat/input", {
+                await collector.publish("sc/v1/chat/input", {
                     "turn_id": "wire-1",
                     "ts": format_ts(),
                     "source": "sc-gateway",
@@ -63,22 +63,22 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
                     "kind": "chat",
                 })
                 await collector.wait_until(
-                    lambda messages: bool(_on(messages, "orin/v1/chat/output", turn_id="wire-1")),
+                    lambda messages: bool(_on(messages, "sc/v1/chat/output", turn_id="wire-1")),
                 )
             finally:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-        outputs = _on(collector.messages, "orin/v1/chat/output", turn_id="wire-1")
+        outputs = _on(collector.messages, "sc/v1/chat/output", turn_id="wire-1")
         self.assertEqual(outputs[-1]["text"], "Hello there")
         self.assertEqual(outputs[-1]["source"], "sc-brain")
         self.assertFalse(outputs[-1]["cancelled"])
         self.assertIn("T", outputs[-1]["ts"])
-        streams = _on(collector.messages, "orin/v1/chat/stream", turn_id="wire-1")
+        streams = _on(collector.messages, "sc/v1/chat/stream", turn_id="wire-1")
         self.assertTrue(any(item["done"] for item in streams))
         self.assertTrue(any(item["token"] == "Hello there" for item in streams))
         system = llm.calls[0]["messages"][0]["content"]
         self.assertTrue("AEDT" in system or "AEST" in system)
-        health = _on(collector.messages, "orin/v1/health/sc-brain", status="healthy")
+        health = _on(collector.messages, "sc/v1/health/sc-brain", status="healthy")
         self.assertEqual(health[0]["source"], "sc-brain")
         self.assertNotIn("turn_id", health[0])
 
@@ -92,7 +92,7 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(brain.serve(ready))
             try:
                 await asyncio.wait_for(ready.wait(), 3)
-                await collector.publish("orin/v1/chat/input", {
+                await collector.publish("sc/v1/chat/input", {
                     "turn_id": "wire-cancel",
                     "ts": format_ts(),
                     "source": "sc-gateway",
@@ -100,7 +100,7 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
                     "kind": "chat",
                 })
                 await self._wait(lambda: any(call["user"] == "wait" for call in llm.calls))
-                await collector.publish("orin/v1/turn/cancel", {
+                await collector.publish("sc/v1/turn/cancel", {
                     "turn_id": "wire-cancel",
                     "ts": format_ts(),
                     "source": "sc-gateway",
@@ -108,7 +108,7 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
                 })
                 await collector.wait_until(
                     lambda messages: any(
-                        item.get("cancelled") for item in _on(messages, "orin/v1/chat/output", turn_id="wire-cancel")
+                        item.get("cancelled") for item in _on(messages, "sc/v1/chat/output", turn_id="wire-cancel")
                     ),
                     timeout=1,
                 )
@@ -134,27 +134,27 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(brain.serve(ready))
             try:
                 await asyncio.wait_for(ready.wait(), 3)
-                await collector.publish("orin/v1/voice/transcript", {
+                await collector.publish("sc/v1/voice/transcript", {
                     "turn_id": "vq-1",
                     "ts": format_ts(),
                     "source": "sc-speech",
                     "text": "first",
                 })
                 await self._wait(lambda: any(call["user"] == "first" for call in llm.calls))
-                await collector.publish("orin/v1/voice/transcript", {
+                await collector.publish("sc/v1/voice/transcript", {
                     "turn_id": "vq-2",
                     "ts": format_ts(),
                     "source": "sc-speech",
                     "text": "second",
                 })
                 await collector.wait_until(
-                    lambda messages: bool(_on(messages, "orin/v1/tts/say", turn_id="vq-2")),
+                    lambda messages: bool(_on(messages, "sc/v1/tts/say", turn_id="vq-2")),
                     timeout=2,
                 )
             finally:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-        spoken = _on(collector.messages, "orin/v1/tts/say", turn_id="vq-2")
+        spoken = _on(collector.messages, "sc/v1/tts/say", turn_id="vq-2")
         self.assertEqual(spoken[-1]["text"], "Sorry, I missed that.")
         self.assertEqual([call["user"] for call in llm.calls], ["first"])
 
@@ -166,7 +166,7 @@ class BrainMqttTests(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(brain.serve(ready))
             try:
                 await asyncio.wait_for(ready.wait(), 3)
-                await collector.publish("orin/v1/chat/input", {"text": "missing turn id"})
+                await collector.publish("sc/v1/chat/input", {"text": "missing turn id"})
                 await asyncio.sleep(0.2)
             finally:
                 task.cancel()
@@ -199,9 +199,9 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
                     "timestamp": 1763337600,
                 })
                 await collector.wait_until(
-                    lambda messages: bool(_on(messages, "orin/v1/chat/input")),
+                    lambda messages: bool(_on(messages, "sc/v1/chat/input")),
                 )
-                bridged = _on(collector.messages, "orin/v1/chat/input")
+                bridged = _on(collector.messages, "sc/v1/chat/input")
                 self.assertEqual(len(bridged), 1)
                 self.assertEqual(bridged[0]["text"], "Are you there?")
                 self.assertEqual(bridged[0]["source"], "airi")
@@ -209,7 +209,7 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(bridged[0]["turn_id"])
                 self.assertIn("+", bridged[0]["ts"])
                 await asyncio.sleep(0.2)
-                self.assertEqual(len(_on(collector.messages, "orin/v1/chat/input")), 1)
+                self.assertEqual(len(_on(collector.messages, "sc/v1/chat/input")), 1)
             finally:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
@@ -221,7 +221,7 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(bridge.serve(ready))
             try:
                 await asyncio.wait_for(ready.wait(), 3)
-                await collector.publish("orin/v1/chat/output", {
+                await collector.publish("sc/v1/chat/output", {
                     "turn_id": "out-1",
                     "ts": format_ts(),
                     "source": "sc-brain",
@@ -241,14 +241,14 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(payloads[0]["text"], "On my way.")
             self.assertEqual(payloads[0]["emotion"], "confident")
             self.assertEqual(payloads[0]["bridge"], "sc-compat")
-        self.assertEqual(len(_on(collector.messages, "orin/v1/chat/output", turn_id="out-1")), 1)
+        self.assertEqual(len(_on(collector.messages, "sc/v1/chat/output", turn_id="out-1")), 1)
 
     async def test_legacy_stop_cancels_the_active_voice_turn(self):
         bridge = CompatBridge()
         mapped = bridge.translate("sentient/tts/stop", {"reason": "wake_word_interrupt", "source": "voice"})
         self.assertEqual(len(mapped), 1)
         topic, payload, qos, retain = mapped[0]
-        self.assertEqual(topic, "orin/v1/turn/cancel")
+        self.assertEqual(topic, "sc/v1/turn/cancel")
         self.assertEqual(payload["turn_id"], "*")
         self.assertEqual(payload["reason"], "barge-in")
         self.assertEqual(qos, 1)
@@ -258,7 +258,7 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tts_state_fans_out_to_the_legacy_playback_topics(self):
         bridge = CompatBridge()
-        started = bridge.translate("orin/v1/tts/state", {
+        started = bridge.translate("sc/v1/tts/state", {
             "turn_id": "t-1",
             "ts": format_ts(),
             "source": "sc-speech",
@@ -266,7 +266,7 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
         })
         topics = sorted(item[0] for item in started)
         self.assertEqual(topics, ["sentient/tts/started", "sentient/tts/status"])
-        completed = bridge.translate("orin/v1/tts/state", {
+        completed = bridge.translate("sc/v1/tts/state", {
             "turn_id": "t-1",
             "ts": format_ts(),
             "source": "sc-speech",
@@ -279,7 +279,7 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
 
     def test_avatar_emotion_reaches_legacy_expression_topics(self):
         bridge = CompatBridge()
-        mapped = bridge.translate("orin/v1/avatar/state", {
+        mapped = bridge.translate("sc/v1/avatar/state", {
             "turn_id": "a-1",
             "ts": format_ts(),
             "source": "sc-brain",
@@ -323,10 +323,10 @@ class CompatMqttTests(unittest.IsolatedAsyncioTestCase):
         response = _on(collector.messages, "sentient/persona/response")
         self.assertEqual(response[-1]["text"], "Systems online.")
         turn_id = response[-1]["turn_id"]
-        orin_out = _on(collector.messages, "orin/v1/chat/output", turn_id=turn_id)
+        orin_out = _on(collector.messages, "sc/v1/chat/output", turn_id=turn_id)
         self.assertEqual(orin_out[-1]["text"], "Systems online.")
         self.assertEqual(orin_out[-1]["source"], "sc-brain")
-        orin_in = _on(collector.messages, "orin/v1/chat/input")
+        orin_in = _on(collector.messages, "sc/v1/chat/input")
         self.assertEqual(orin_in[0]["turn_id"], turn_id)
         self.assertEqual(llm.calls[0]["user"], "Status?")
 

@@ -2,7 +2,7 @@
 
 All services MUST use these constants instead of hardcoding topic strings.
 Legacy namespace: sentient/
-Current contract namespace: orin/v1 (see contract/mqtt.yaml). The generated
+Current contract namespace: sc/v1 (see contract/mqtt.yaml). The generated
 block below is checked against that file by tests/contract.
 """
 
@@ -79,18 +79,18 @@ FEEDBACK_RECEIVED = "sentient/feedback/received"
 
 
 # BEGIN GENERATED ORIN/V1 - from contract/mqtt.yaml. Do not edit by hand.
-ORIN_PREFIX = "orin/v1"
+ORIN_PREFIX = "sc/v1"
 
-ORIN_VOICE_WAKE = "orin/v1/voice/wake"
-ORIN_VOICE_TRANSCRIPT = "orin/v1/voice/transcript"
-ORIN_CHAT_INPUT = "orin/v1/chat/input"
-ORIN_CHAT_STREAM = "orin/v1/chat/stream"
-ORIN_CHAT_OUTPUT = "orin/v1/chat/output"
-ORIN_TURN_CANCEL = "orin/v1/turn/cancel"
-ORIN_TTS_SAY = "orin/v1/tts/say"
-ORIN_TTS_STATE = "orin/v1/tts/state"
-ORIN_AVATAR_STATE = "orin/v1/avatar/state"
-ORIN_HEALTH = "orin/v1/health/{service}"
+ORIN_VOICE_WAKE = "sc/v1/voice/wake"
+ORIN_VOICE_TRANSCRIPT = "sc/v1/voice/transcript"
+ORIN_CHAT_INPUT = "sc/v1/chat/input"
+ORIN_CHAT_STREAM = "sc/v1/chat/stream"
+ORIN_CHAT_OUTPUT = "sc/v1/chat/output"
+ORIN_TURN_CANCEL = "sc/v1/turn/cancel"
+ORIN_TTS_SAY = "sc/v1/tts/say"
+ORIN_TTS_STATE = "sc/v1/tts/state"
+ORIN_AVATAR_STATE = "sc/v1/avatar/state"
+ORIN_HEALTH = "sc/v1/health/{service}"
 
 ORIN_TOPICS = {
     "voice/wake": ORIN_VOICE_WAKE,

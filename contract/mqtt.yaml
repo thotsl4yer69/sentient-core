@@ -1,8 +1,8 @@
-# Machine-readable orin/v1 MQTT contract.
+# Machine-readable sc/v1 MQTT contract.
 # WS5 (voice) and WS7 (gateway) import sentient.common.mqtt_topics, which is
 # generated from this file. Keep topic strings stable.
 contract_version: 1
-prefix: orin/v1
+prefix: sc/v1
 description: "Every payload carries ts and source. turn_id is required wherever a turn exists."
 loop_guard:
   field: bridge
@@ -10,7 +10,7 @@ loop_guard:
 topics:
   - id: voice/wake
     constant: ORIN_VOICE_WAKE
-    topic: orin/v1/voice/wake
+    topic: sc/v1/voice/wake
     publishers:
       - sc-speech
     subscribers:
@@ -37,7 +37,7 @@ topics:
           type: number
   - id: voice/transcript
     constant: ORIN_VOICE_TRANSCRIPT
-    topic: orin/v1/voice/transcript
+    topic: sc/v1/voice/transcript
     publishers:
       - sc-speech
     subscribers:
@@ -66,7 +66,7 @@ topics:
           type: number
   - id: chat/input
     constant: ORIN_CHAT_INPUT
-    topic: orin/v1/chat/input
+    topic: sc/v1/chat/input
     publishers:
       - sc-gateway
       - sc-buddy
@@ -102,7 +102,7 @@ topics:
             - background
   - id: chat/stream
     constant: ORIN_CHAT_STREAM
-    topic: orin/v1/chat/stream
+    topic: sc/v1/chat/stream
     publishers:
       - sc-brain
     subscribers:
@@ -138,7 +138,7 @@ topics:
           type: boolean
   - id: chat/output
     constant: ORIN_CHAT_OUTPUT
-    topic: orin/v1/chat/output
+    topic: sc/v1/chat/output
     publishers:
       - sc-brain
     subscribers:
@@ -185,7 +185,7 @@ topics:
             - error
   - id: turn/cancel
     constant: ORIN_TURN_CANCEL
-    topic: orin/v1/turn/cancel
+    topic: sc/v1/turn/cancel
     publishers:
       - sc-speech
       - sc-gateway
@@ -219,7 +219,7 @@ topics:
             - client
   - id: tts/say
     constant: ORIN_TTS_SAY
-    topic: orin/v1/tts/say
+    topic: sc/v1/tts/say
     publishers:
       - sc-brain
     subscribers:
@@ -248,7 +248,7 @@ topics:
           type: string
   - id: tts/state
     constant: ORIN_TTS_STATE
-    topic: orin/v1/tts/state
+    topic: sc/v1/tts/state
     publishers:
       - sc-speech
     subscribers:
@@ -283,7 +283,7 @@ topics:
             - failed
   - id: avatar/state
     constant: ORIN_AVATAR_STATE
-    topic: orin/v1/avatar/state
+    topic: sc/v1/avatar/state
     publishers:
       - sc-brain
     subscribers:
@@ -311,7 +311,7 @@ topics:
           type: string
   - id: health/{service}
     constant: ORIN_HEALTH
-    topic: orin/v1/health/{service}
+    topic: sc/v1/health/{service}
     publishers:
       - sc-*
     subscribers:
@@ -341,36 +341,36 @@ topics:
           type: string
 bridges:
   - legacy: sentient/persona/chat/input
-    orin: orin/v1/chat/input
+    orin: sc/v1/chat/input
     direction: both
   - legacy: sentient/chat/input
-    orin: orin/v1/chat/input
+    orin: sc/v1/chat/input
     direction: both
   - legacy: sentient/wake/detected
-    orin: orin/v1/voice/wake
+    orin: sc/v1/voice/wake
     direction: both
   - legacy: sentient/voice/transcription
-    orin: orin/v1/voice/transcript
+    orin: sc/v1/voice/transcript
     direction: both
   - legacy: sentient/chat/output
-    orin: orin/v1/chat/output
+    orin: sc/v1/chat/output
     direction: both
     also_legacy:
       - sentient/persona/chat/output
       - sentient/persona/response
   - legacy: sentient/chat/stream
-    orin: orin/v1/chat/stream
+    orin: sc/v1/chat/stream
     direction: both
   - legacy: sentient/tts/stop
-    orin: orin/v1/turn/cancel
+    orin: sc/v1/turn/cancel
     direction: both
   - legacy: sentient/tts/request
-    orin: orin/v1/tts/say
+    orin: sc/v1/tts/say
     direction: both
     also_legacy:
       - sentient/tts/speak
   - legacy: sentient/tts/status
-    orin: orin/v1/tts/state
+    orin: sc/v1/tts/state
     direction: both
     fanout_topics:
       - when: started
@@ -384,7 +384,7 @@ bridges:
       - when: failed
         topic: sentient/tts/completed
   - legacy: sentient/avatar/state
-    orin: orin/v1/avatar/state
+    orin: sc/v1/avatar/state
     direction: both
     fanout_topics:
       - when: emotion
@@ -392,5 +392,5 @@ bridges:
       - when: emotion
         topic: sentient/persona/emotion
   - legacy: sentient/avatar/expression
-    orin: orin/v1/avatar/state
+    orin: sc/v1/avatar/state
     direction: to_orin

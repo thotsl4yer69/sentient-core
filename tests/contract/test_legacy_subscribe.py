@@ -46,7 +46,7 @@ class SubscribeLogTests(unittest.TestCase):
         self.assertNotIn('logger.info(f"Subscribed to {TOPIC_CHAT_INPUT}")', text)
         self.assertNotIn("await self.mqtt_client.subscribe(TOPIC_CHAT_INPUT)", text)
         self.assertIn("sc-compat", text)
-        self.assertIn("orin/v1/chat/input", text)
+        self.assertIn("sc/v1/chat/input", text)
 
 
 if __name__ == "__main__":

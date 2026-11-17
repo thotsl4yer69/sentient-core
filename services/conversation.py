@@ -249,9 +249,9 @@ class ConversationService:
 
             # sentient/persona/chat/input stays with the cortana service.
             # sc-compat is what subscribes to it and bridges it onto
-            # orin/v1/chat/input. Log only a subscription that was requested.
+            # sc/v1/chat/input. Log only a subscription that was requested.
             logger.info(
-                "Not subscribed to %s; cortana owns it and sc-compat bridges it to orin/v1/chat/input",
+                "Not subscribed to %s; cortana owns it and sc-compat bridges it to sc/v1/chat/input",
                 TOPIC_CHAT_INPUT,
             )
 
