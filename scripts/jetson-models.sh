@@ -5,7 +5,14 @@
 set -Eeuo pipefail
 
 NAME="sentient-jetson-llm"
-IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-orin"
+# Pinned llama.cpp build for L4T R36 / CUDA 12.6. Same digest as
+# r36.4-tegra-aarch64-cu126-22.04 (sha256:8fa5df9a76d3ddce89ade0ae67822afdfac27a5fe3a9e5eff7b6dfd72cd34f6b).
+# Override with SENTIENT_LLAMA_IMAGE only to test another published tag.
+IMAGE="${SENTIENT_LLAMA_IMAGE:-ghcr.io/nvidia-ai-iot/llama_cpp:b8708-r36.4-tegra-aarch64-cu126-22.04}"
+# Hard cap for the LLM container. MemoryMax on the unit does not apply:
+# the container has its own cgroup. CUDA on Tegra is unified memory and may
+# not be charged here; Gate B2 compares tegrastats with this cap.
+LLM_MEMORY="${SENTIENT_LLM_MEMORY:-3300m}"
 CACHE="${SENTIENT_HF_CACHE:-/mnt/orin-ai/hf-cache}"
 PORT=18080
 URL="http://127.0.0.1:${PORT}"
@@ -100,9 +107,11 @@ case "${command}" in
     mkdir -p "${CACHE}"
     available_kb=$(df -Pk "${CACHE}" | awk 'NR==2{print $4}')
     (( available_kb >= 7000000 )) || die "Need at least 7 GB free on model cache filesystem"
+    [[ -n "${LLM_MEMORY}" ]] || die "LLM container memory cap is required"
     docker rm "${NAME}" >/dev/null 2>&1 || true
     docker run -d --name "${NAME}" --restart unless-stopped \
       --runtime nvidia --network host \
+      --memory="${LLM_MEMORY}" --memory-swap="${LLM_MEMORY}" \
       -v "${CACHE}:/root/.cache/huggingface" \
       "${IMAGE}" llama-server \
       -hf "${REPO}" --hf-file "${FILE}" \
@@ -195,6 +204,8 @@ Usage: sudo bash scripts/jetson-models.sh COMMAND
   stop            Stop only the managed llama.cpp container
   status          Report model and services
 Models run one at a time on port 127.0.0.1:18080.
+The container is capped at ${LLM_MEMORY} RAM and swap (docker --memory / --memory-swap).
+Image: ${IMAGE}
 EOF
     ;;
 esac

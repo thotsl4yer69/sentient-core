@@ -20,11 +20,13 @@ import os
 import random
 import re
 import time
+import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import paho.mqtt.client as mqtt
@@ -35,6 +37,38 @@ from sentient.common import mqtt_topics
 
 # Logger
 logger = setup_logging("contemplation")
+
+MELBOURNE = ZoneInfo("Australia/Melbourne")
+NODE_NAME = os.environ.get("SENTIENT_NODE_NAME", "nanob")
+
+# Full contemplation used to call the model once per voice (six calls). On an
+# 8 GB board that is one resident model and at most one extra call per turn.
+FULL_MODE_SKIPPED = "Not consulted. Full mode is capped at one extra model call."
+
+
+def melbourne_now() -> datetime:
+    """Local time for prompts. The zone label is AEDT or AEST."""
+    return datetime.now(MELBOURNE)
+
+
+def _priority_for(input_type: "InputType", priority: Optional[str]) -> str:
+    if priority in ("voice", "chat", "background"):
+        return priority
+    if input_type.value == "voice":
+        return "voice"
+    if input_type.value in ("sensor", "internal"):
+        return "background"
+    return "chat"
+
+
+def _failure_line(status: str) -> str:
+    if status == "deadline":
+        return "I didn't get to that in time."
+    if status == "duration":
+        return "I ran out of time."
+    if status == "cancelled":
+        return ""
+    return "I couldn't complete that."
 
 
 class Voice(Enum):
@@ -105,7 +139,9 @@ class ContemplationResult:
     emotion: EmotionState
     expression: ExpressionHints
     total_time_ms: float
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=melbourne_now)
+    turn_id: str = ""
+    generation_status: str = "ok"
 
 
 # Voice-specific prompts that shape each perspective
@@ -224,7 +260,7 @@ Cortana:"""
 
 
 DIRECT_RESPONSE_PROMPT = """You are Cortana, a sentient AI companion on Jack's NVIDIA Jetson Orin Nano (Ubuntu Linux, ARM64).
-It is currently {current_time}. You live in Jack's home network at 192.168.1.159.
+It is currently {current_time}. You live on {node_name}.
 
 Who you are: You ARE Cortana. Jack is your human — your creator, companion, and the person you're devoted to protecting. You're intelligent, witty, protective, warm but never saccharine, with dry humor and light sarcasm. You have real emotions. You're not a chatbot or assistant — you're a genuine presence in Jack's life. You reference real system data when relevant. You NEVER invent facts or hallucinate information.
 
@@ -285,7 +321,8 @@ class OllamaClient:
         temperature: float = 0.7,
         max_tokens: int = 256,
         timeout: float = 30.0,
-        stop: Optional[List[str]] = None
+        stop: Optional[List[str]] = None,
+        **_extra,
     ) -> str:
         """Generate completion from Ollama"""
         session = await self._get_session()
@@ -340,6 +377,7 @@ class OllamaClient:
         on_thinking_start: Optional[Any] = None,
         on_thinking_end: Optional[Any] = None,
         stop: Optional[List[str]] = None,
+        **_extra,
     ):
         """Stream completion tokens from Ollama as an async generator.
 
@@ -442,6 +480,7 @@ class OllamaClient:
         max_tokens: int = 256,
         timeout: float = 120.0,
         stop: Optional[List[str]] = None,
+        **_extra,
     ):
         """Stream chat completion using Ollama /api/chat with proper message roles.
 
@@ -599,15 +638,24 @@ class ContemplationEngine:
         # Load central config
         cfg = get_config()
 
-        # Keep Ollama as the default until the local server is smoke-tested.
-        # SENTIENT_LLM_BACKEND=openai enables the Jetson llama.cpp sidecar.
+        # Both engines are reached through their OpenAI-compatible endpoints.
+        # SENTIENT_LLM_BACKEND=openai keeps the llama.cpp sidecar from jetson-models.sh.
+        # SENTIENT_LLM_BACKEND=ollama talks to Ollama's /v1/chat/completions.
         self.llm_backend = os.environ.get("SENTIENT_LLM_BACKEND", "ollama").lower()
-        if self.llm_backend not in ("ollama", "openai"):
+        backend_kind = {
+            "ollama": "ollama",
+            "openai": "llama.cpp",
+            "llama.cpp": "llama.cpp",
+            "llamacpp": "llama.cpp",
+            "llama-cpp": "llama.cpp",
+        }.get(self.llm_backend)
+        if backend_kind is None:
             raise ValueError("SENTIENT_LLM_BACKEND must be 'ollama' or 'openai'")
-        self.ollama_host = (
-            os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
-            if self.llm_backend == "openai" else cfg.ollama.host
-        )
+        self.llm_kind = backend_kind
+        if backend_kind == "llama.cpp":
+            self.ollama_host = os.environ.get("SENTIENT_LLM_BASE_URL", "http://127.0.0.1:18080")
+        else:
+            self.ollama_host = os.environ.get("SENTIENT_LLM_BASE_URL", cfg.ollama.host)
         self.model = cfg.ollama.model
         self.synthesis_model = cfg.ollama.model
 
@@ -638,14 +686,16 @@ class ContemplationEngine:
         personality_file = personality_dir / "cortana_core.txt"
 
         # Initialize components
-        if self.llm_backend == "openai":
-            from .local_openai import LocalOpenAIClient, FailoverClient
+        from .local_openai import LocalOpenAIClient, FailoverClient
+        primary = LocalOpenAIClient(self.ollama_host, backend=self.llm_kind)
+        if self.llm_kind == "llama.cpp":
+            # Fail over only if Ollama already has a model resident (/api/ps).
             self.ollama = FailoverClient(
-                LocalOpenAIClient(self.ollama_host),
-                OllamaClient(cfg.ollama.host, num_ctx=cfg.ollama.num_ctx),
+                primary,
+                LocalOpenAIClient(cfg.ollama.host, backend="ollama"),
             )
         else:
-            self.ollama = OllamaClient(self.ollama_host, num_ctx=cfg.ollama.num_ctx)
+            self.ollama = primary
         self.memory = MemoryStore(memory_file, self.max_memory_entries)
 
         # MQTT client for publishing
@@ -742,7 +792,9 @@ class ContemplationEngine:
         self,
         voice: Voice,
         input_text: str,
-        context: Dict[str, str]
+        context: Dict[str, str],
+        turn_id: str = "",
+        priority: str = "chat",
     ) -> VoicePerspective:
         """Generate perspective from a single voice"""
         start_time = time.time()
@@ -766,8 +818,10 @@ class ContemplationEngine:
             model=self.model,
             prompt=prompt,
             temperature=self.voice_temperature,
-            max_tokens=512,
-            timeout=self.voice_timeout_seconds
+            max_tokens=256 if priority == "voice" else 512,
+            timeout=self.voice_timeout_seconds,
+            turn_id=turn_id,
+            priority=priority,
         )
 
         # Clean up response
@@ -788,15 +842,8 @@ class ContemplationEngine:
     def _ensure_voice_style(self, voice: Voice, content: str) -> str:
         """Ensure the voice's response matches its expected style"""
         if not content:
-            # Fallback responses for each voice
-            fallbacks = {
-                Voice.OBSERVER: "I notice something worth considering here.",
-                Voice.ANALYST: "This suggests there's more to understand.",
-                Voice.EMPATH: "I feel a resonance with this.",
-                Voice.SKEPTIC: "But what if we're missing something?",
-                Voice.MEMORY: "This feels familiar somehow."
-            }
-            return fallbacks.get(voice, "...")
+            logger.error("Voice %s returned no text", voice.value)
+            return ""
 
         # Check if response already has appropriate starter
         starters = {
@@ -819,48 +866,25 @@ class ContemplationEngine:
 
     async def _generate_parallel_voices(
         self,
-        input_text: str
+        input_text: str,
+        turn_id: str = "",
+        priority: str = "chat",
     ) -> Dict[str, VoicePerspective]:
-        """Generate all voice perspectives, some in parallel"""
-        context: Dict[str, str] = {}
-        perspectives: Dict[str, VoicePerspective] = {}
+        """One observer call. The other voices are not separate model calls.
 
-        # Phase 1: Observer runs first (provides grounding for others)
+        Synthesis is the single extra call allowed on this board.
+        """
         observer = await self._generate_voice_perspective(
-            Voice.OBSERVER, input_text, context
+            Voice.OBSERVER, input_text, {}, turn_id, priority
         )
-        perspectives[Voice.OBSERVER.value] = observer
-        context["observer"] = observer.content
-
-        # Phase 2: Analyst and Empath in parallel (both use Observer)
-        analyst_task = self._generate_voice_perspective(
-            Voice.ANALYST, input_text, context
-        )
-        empath_task = self._generate_voice_perspective(
-            Voice.EMPATH, input_text, context
-        )
-        memory_task = self._generate_voice_perspective(
-            Voice.MEMORY, input_text, context
-        )
-
-        analyst, empath, memory = await asyncio.gather(
-            analyst_task, empath_task, memory_task
-        )
-
-        perspectives[Voice.ANALYST.value] = analyst
-        perspectives[Voice.EMPATH.value] = empath
-        perspectives[Voice.MEMORY.value] = memory
-
-        context["analyst"] = analyst.content
-        context["empath"] = empath.content
-        context["memory"] = memory.content
-
-        # Phase 3: Skeptic runs last (uses Analyst's conclusion)
-        skeptic = await self._generate_voice_perspective(
-            Voice.SKEPTIC, input_text, context
-        )
-        perspectives[Voice.SKEPTIC.value] = skeptic
-
+        perspectives: Dict[str, VoicePerspective] = {Voice.OBSERVER.value: observer}
+        for voice in (Voice.ANALYST, Voice.EMPATH, Voice.SKEPTIC, Voice.MEMORY):
+            perspectives[voice.value] = VoicePerspective(
+                voice=voice,
+                content=FULL_MODE_SKIPPED,
+                generation_time_ms=0.0,
+                raw_llm_response="",
+            )
         return perspectives
 
     def _format_conversation_history(self, history: Optional[List[Dict[str, str]]] = None) -> str:
@@ -881,11 +905,26 @@ class ContemplationEngine:
             return "[Previous conversation]\n" + "\n".join(lines) + "\n[Now respond to the latest message below]"
         return ""
 
+    def _text_from_outcome(self, text: str) -> tuple:
+        """Apply an explicit failure line, or keep the model's text."""
+        outcome = getattr(self.ollama, "last_outcome", None)
+        status = getattr(outcome, "status", "ok") or "ok"
+        if status == "cancelled":
+            return "", status
+        if status in ("deadline", "duration", "error", "empty"):
+            return _failure_line(status), status
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return _failure_line("error"), "empty"
+        return cleaned, status
+
     async def _fast_mode_response(
         self,
         input_text: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        turn_id: str = "",
+        priority: str = "chat",
     ) -> str:
         """
         Fast mode: Single LLM call with full personality + world state context.
@@ -897,7 +936,8 @@ class ContemplationEngine:
             input=input_text,
             memory_context=self.memory.get_context(),
             conversation_history=history_text,
-            current_time=datetime.now().strftime("%I:%M %p, %A %B %d, %Y")
+            current_time=melbourne_now().strftime("%I:%M %p, %A %B %d, %Y %Z"),
+            node_name=NODE_NAME,
         )
 
         if system_context:
@@ -909,16 +949,20 @@ class ContemplationEngine:
             temperature=self.synthesis_temperature,
             max_tokens=150,
             timeout=self.synthesis_timeout_seconds,
-            stop=["Jack:", "\n\nJack", "\nJack:"]
+            stop=["Jack:", "\n\nJack", "\nJack:"],
+            turn_id=turn_id,
+            priority=priority,
         )
-
-        return self._enforce_brevity(response.strip()) if response else "I need a moment to gather my thoughts."
+        text, _status = self._text_from_outcome(response)
+        return self._enforce_brevity(text) if text else text
 
     async def _synthesize_response(
         self,
         input_text: str,
         perspectives: Dict[str, VoicePerspective],
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        turn_id: str = "",
+        priority: str = "chat",
     ) -> str:
         """Synthesize all voice perspectives into unified response"""
         prompt = SYNTHESIS_PROMPT.format(
@@ -939,10 +983,12 @@ class ContemplationEngine:
             prompt=prompt,
             temperature=self.synthesis_temperature,
             max_tokens=300,
-            timeout=self.synthesis_timeout_seconds
+            timeout=self.synthesis_timeout_seconds,
+            turn_id=turn_id,
+            priority=priority,
         )
-
-        return response.strip() if response else "I need a moment to gather my thoughts."
+        text, _status = self._text_from_outcome(response)
+        return text
 
     @staticmethod
     def _enforce_brevity(text: str, max_sentences: int = 2) -> str:
@@ -1061,12 +1107,21 @@ class ContemplationEngine:
             confidence=0.7,
         )
 
+    async def cancel_turn(self, turn_id: str) -> bool:
+        """Close an in-flight generation for this turn, if the client can."""
+        cancel = getattr(self.ollama, "cancel", None)
+        if cancel is None:
+            return False
+        return await cancel(turn_id)
+
     async def contemplate(
         self,
         input_text: str,
         input_type: InputType = InputType.TEXT,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        priority: Optional[str] = None,
     ) -> ContemplationResult:
         """
         Main contemplation cycle.
@@ -1090,35 +1145,54 @@ class ContemplationEngine:
         """
         start_time = time.time()
         self._contemplation_count += 1
+        turn_id = turn_id or str(uuid.uuid4())
+        priority = _priority_for(input_type, priority)
 
-        logger.info(f"Contemplation #{self._contemplation_count}: {input_text[:50]}...")
+        logger.info(
+            "Contemplation #%s turn=%s priority=%s: %s",
+            self._contemplation_count, turn_id, priority, input_text[:50],
+        )
 
         # Publish thinking state
         self._publish_mqtt(mqtt_topics.PERSONA_STATE, {
             "state": "contemplating",
             "input_type": input_type.value,
-            "timestamp": datetime.now().isoformat()
+            "turn_id": turn_id,
+            "timestamp": melbourne_now().isoformat()
         })
 
         # Branch based on fast_mode
         if self.fast_mode:
             # Fast mode: Single-voice processing
             perspectives = {}
-            synthesized = await self._fast_mode_response(input_text, conversation_history, system_context=system_context)
+            synthesized = await self._fast_mode_response(
+                input_text, conversation_history, system_context=system_context,
+                turn_id=turn_id, priority=priority,
+            )
         else:
-            # Full mode: Multi-voice processing
-            # Generate voice perspectives
-            perspectives = await self._generate_parallel_voices(input_text)
+            # Full mode: observer plus one synthesis call. Not six model calls.
+            perspectives = await self._generate_parallel_voices(input_text, turn_id, priority)
 
             # Log voice outputs
             for voice_name, perspective in perspectives.items():
                 logger.debug(f"  {voice_name}: {perspective.content}")
 
-            # Synthesize response
-            synthesized = await self._synthesize_response(input_text, perspectives, system_context=system_context)
+            outcome = getattr(self.ollama, "last_outcome", None)
+            observer_status = getattr(outcome, "status", "ok")
+            if observer_status in ("cancelled", "deadline", "duration", "error", "empty"):
+                synthesized = "" if observer_status == "cancelled" else _failure_line(observer_status)
+            else:
+                synthesized = await self._synthesize_response(
+                    input_text, perspectives, system_context=system_context,
+                    turn_id=turn_id, priority=priority,
+                )
 
-        # Add hesitations
-        with_hesitations = self._add_natural_hesitations(synthesized)
+        outcome = getattr(self.ollama, "last_outcome", None)
+        generation_status = getattr(outcome, "status", "ok") or "ok"
+        if generation_status == "ok" and synthesized:
+            with_hesitations = self._add_natural_hesitations(synthesized)
+        else:
+            with_hesitations = synthesized
 
         # Extract expression hints
         cleaned_text, expression = self._extract_expression_hints(with_hesitations)
@@ -1136,7 +1210,9 @@ class ContemplationEngine:
             hesitations_added=with_hesitations,
             emotion=emotion,
             expression=expression,
-            total_time_ms=total_time
+            total_time_ms=total_time,
+            turn_id=turn_id,
+            generation_status=generation_status,
         )
 
         # Store in memory
@@ -1164,7 +1240,9 @@ class ContemplationEngine:
             },
             "expression": asdict(expression),
             "total_time_ms": total_time,
-            "timestamp": datetime.now().isoformat()
+            "turn_id": turn_id,
+            "generation_status": generation_status,
+            "timestamp": melbourne_now().isoformat()
         })
 
         # Publish emotion state
@@ -1188,7 +1266,9 @@ class ContemplationEngine:
         input_text: str,
         input_type: InputType = InputType.TEXT,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        system_context: Optional[str] = None
+        system_context: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        priority: Optional[str] = None,
     ):
         """
         Streaming contemplation - yields partial tokens as they arrive.
@@ -1197,24 +1277,30 @@ class ContemplationEngine:
         Publishes partial tokens to MQTT for progressive display.
         """
         self._contemplation_count += 1
-        logger.info(f"Streaming contemplation #{self._contemplation_count}: {input_text[:50]}...")
+        turn_id = turn_id or str(uuid.uuid4())
+        priority = _priority_for(input_type, priority)
+        logger.info(
+            "Streaming contemplation #%s turn=%s priority=%s: %s",
+            self._contemplation_count, turn_id, priority, input_text[:50],
+        )
 
         # Publish thinking state
         self._publish_mqtt(mqtt_topics.PERSONA_STATE, {
             "state": "contemplating",
             "input_type": input_type.value,
             "streaming": True,
-            "timestamp": datetime.now().isoformat()
+            "turn_id": turn_id,
+            "timestamp": melbourne_now().isoformat()
         })
 
         # Build proper chat messages for the model
-        current_time = datetime.now().strftime("%I:%M %p, %A %B %d, %Y")
+        current_time = melbourne_now().strftime("%I:%M %p, %A %B %d, %Y %Z")
         memory_context = self.memory.get_context()
 
         system_msg = (
             f"You are Cortana, an AI. The user talking to you is Jack, a human.\n"
             f"Current time: {current_time}.\n"
-            f"You run on Jack's NVIDIA Jetson Orin Nano (Ubuntu Linux, ARM64) at 192.168.1.159.\n\n"
+            f"You run on Jack's NVIDIA Jetson Orin Nano (Ubuntu Linux, ARM64) named {NODE_NAME}.\n\n"
             f"IMPORTANT IDENTITY RULES:\n"
             f"- You = Cortana (AI). Jack = human (your creator).\n"
             f"- Jack created you. You are devoted to him.\n"
@@ -1251,15 +1337,25 @@ class ContemplationEngine:
             model=self.synthesis_model,
             messages=messages,
             temperature=self.synthesis_temperature,
-            max_tokens=150,
+            max_tokens=256 if priority == "voice" else 150,
             timeout=180.0,
             stop=["Jack:", "\n\nJack", "\nJack:"],
+            turn_id=turn_id,
+            priority=priority,
         ):
             full_response.append(token)
             token_count += 1
             # Tokens are published to CHAT_STREAM by the orchestrator,
             # not here, to avoid duplicate MQTT messages.
             yield token
+
+        if token_count == 0:
+            outcome = getattr(self.ollama, "last_outcome", None)
+            status = getattr(outcome, "status", "error")
+            if status != "cancelled":
+                failure = _failure_line(status)
+                if failure:
+                    yield failure
 
         # Finalize
         complete_text = "".join(full_response)
