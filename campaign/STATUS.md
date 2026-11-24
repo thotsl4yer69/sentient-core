@@ -1,13 +1,15 @@
 # STATUS — 2026-11-24
 
-**v3 is built and runs here end to end. Nothing has run on nanob.** Highest
-level reached: **2 — Runs here** (CI pending on the PR). Every hardware
-acceptance test in TARGET.md is still NOT TESTED.
+**v3 is built, runs here end to end, and passes CI. Nothing has run on nanob.**
+Highest level reached: **3 — CI green** (PR #21 at e77356b: unit, end-to-end
+with real llama-server/whisper-server/Piper/Silero/openWakeWord on Python 3.10,
+source tests, dry-run safety). Every hardware acceptance test in TARGET.md is
+still NOT TESTED.
 
 | Component | Ladder | Evidence / gap |
 |---|---|---|
-| sc-core (turns, persona, memory, API) | 2 | 80 sc tests in total incl. real llama-server and real MiniLM; Python 3.10 run |
-| sc-voice (wake, VAD, STT, TTS, barge-in) | 2 | real models in real time with a scripted mic; no real microphone or speaker yet |
+| sc-core (turns, persona, memory, API) | 3 | 86 sc tests incl. real llama-server and real MiniLM; green in CI on Python 3.10 |
+| sc-voice (wake, VAD, STT, TTS, barge-in) | 3 | real models in real time with a scripted mic, green in CI; no real microphone or speaker yet |
 | Memory import from legacy Redis | 2 | against real redis-server with the legacy layout; real nanob data never seen |
 | Installer + units | 2 | installer run for real here (systemd stubbed); units pass `systemd-analyze verify`; never run on a Jetson |
 | sc-llm container on Jetson | 1 | image + flags copied from scripts/jetson-models.sh; unconfirmed (H16) |
