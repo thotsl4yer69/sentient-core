@@ -61,15 +61,22 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ext
-          key: sc-e2e-${{ hashFiles('deploy/v3/install.sh') }}-v1
+          # v2: portable builds. v1 was -march=native, so a cache built on a runner
+          # with AVX-512 crashed whisper-server (Illegal instruction) on one without.
+          key: sc-e2e-${{ hashFiles('deploy/v3/install.sh') }}-v2
       - name: Build llama-server and whisper-server (pinned whisper commit)
         run: |
           set -euo pipefail
           mkdir -p ext && cd ext
+          # Portable x86-64 (AVX2) builds: the cache is shared across runners with
+          # different CPUs. llama.cpp is the build the Jetson image ships (b8708).
+          PORTABLE="-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
+          LLAMA_TAG=$(sed -n 's/^IMAGE_DEFAULT=".*llama_cpp:\(b[0-9]*\)-.*/\1/p' ../deploy/v3/install.sh)
           if [ ! -x llama.cpp/build/bin/llama-server ]; then
-            git clone -q --depth 1 https://github.com/ggml-org/llama.cpp
+            git clone -q --depth 1 --branch "$LLAMA_TAG" https://github.com/ggml-org/llama.cpp
+            # shellcheck disable=SC2086
             cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF \
-              -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF >/dev/null
+              -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF $PORTABLE >/dev/null
             cmake --build llama.cpp/build --target llama-server -j "$(nproc)" >/dev/null
           fi
           WHISPER_COMMIT=$(sed -n 's/^WHISPER_COMMIT="\(.*\)"/\1/p' ../deploy/v3/install.sh)
@@ -77,8 +84,9 @@ jobs:
             mkdir -p whisper.cpp && git -C whisper.cpp init -q
             git -C whisper.cpp remote add origin https://github.com/ggml-org/whisper.cpp || true
             git -C whisper.cpp fetch -q --depth 1 origin "$WHISPER_COMMIT" && git -C whisper.cpp checkout -q FETCH_HEAD
+            # shellcheck disable=SC2086
             cmake -S whisper.cpp -B whisper.cpp/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-              -DWHISPER_BUILD_TESTS=OFF >/dev/null
+              -DWHISPER_BUILD_TESTS=OFF $PORTABLE >/dev/null
             cmake --build whisper.cpp/build --target whisper-server -j "$(nproc)" >/dev/null
           fi
       - name: Models (sha256-checked, same pins as the installer)
