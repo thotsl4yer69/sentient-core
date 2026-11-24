@@ -1,0 +1,45 @@
+[Unit]
+Description=Sentient Core brain (sc-core: turns, persona, memory, API)
+PartOf=sc.target
+Wants=sc-llm.service network-online.target
+After=sc-llm.service network-online.target
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+Environment=SC_CONFIG=/etc/sc/sc.toml PYTHONUNBUFFERED=1
+ExecStart=/opt/sc/venv/bin/python -m sc.core
+# sc-core starts even while the model is still loading; /healthz reports
+# "degraded" until llama-server answers, and voice turns speak a fallback.
+Restart=always
+RestartSec=2
+# 78 = EX_CONFIG (bad config / token file): don't restart-loop on it.
+RestartPreventExitStatus=78
+MemoryMax=700M
+TasksMax=128
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/sc
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+UMask=0077
+SyslogIdentifier=sc-core
+
+[Install]
+WantedBy=sc.target

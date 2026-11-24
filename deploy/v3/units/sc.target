@@ -1,0 +1,7 @@
+[Unit]
+Description=Sentient Core v3 (model server, brain, voice)
+Wants=sc-llm.service sc-core.service sc-stt.service sc-voice.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

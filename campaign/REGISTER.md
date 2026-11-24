@@ -1,0 +1,33 @@
+# REGISTER — options and hypotheses
+
+## Design options
+
+Decision 2026-11-24: Jack chose a complete rebuild to the optimal design → **O-D** (below), built in vertical slices, reusing the proven pieces of O-A.
+
+| id | option | status | evidence | killed by |
+|---|---|---|---|---|
+| O-A | **Finish the in-flight sc-\* rebuild as designed.** (superseded by O-D) Merge WS1–WS8 (#13–#20), write the missing WS5 speech, `buddy` and `health` services, fix the bugs below, then run the hardware gates. 8 services + TLS broker with per-client ACLs + gateway + release tooling. | alive | All 8 PRs merge cleanly; 180 tests pass in a clean venv; but ~32k added lines never integrated or run on hardware, 3 units point at missing modules, broker install broken 3 ways (H1–H3). | — |
+| O-B | **Thin vertical slice first, then widen (recommended).** Take only what the first working turn needs from the PRs — LLM adapter (#13), turn/brain contract (#14), MiniLM memory + packaging (#16), gateway's OpenAI endpoint (#19) — plus ONE speech daemon modelled on Jarvis-home (whisper.cpp + Piper + Silero VAD + USB speakerphone). Broker on loopback, no TLS/ACL until something off-box needs MQTT. Release/backup tooling (#17, #18) used as-is for deploy safety. Avatar, buddy, proactive later. | alive | Reference: Jarvis-home and maxmlang/jetson-voice-assistant both run this exact shape on an Orin Nano 8 GB at ~2.5–3.5 s per reply. | — |
+| O-D | **Rebuild: 4 processes (sc-llm, sc-core, sc-stt, sc-voice), SQLite memory, no broker in the core loop.** Ports the good parts of the PRs: turn rules (#14), llama.cpp container and model choice (#13), MiniLM ONNX + hashed lock (#16), token auth (#19). Drops the chat-text keyword filter (blocks normal sentences, guards nothing: no tool path). | **chosen** | Slices 1 (text+memory) and 2 (voice) built and run here with real llama-server, MiniLM, whisper.cpp, Piper, Silero, openWakeWord; 80 sc tests; Python 3.10 run; installer run for real. | — |
+| O-C | **AIRI does everything.** Point AIRI at llama.cpp/Ollama on nanob, use AIRI's own speech and memory; Sentient Core shrinks to a model server plus memory/tools. | alive (weak) | Least code. But AIRI's voice loop runs in the client device, not on the Jetson's speakerphone; AIRI desktop (Electron) on the Jetson competes with the model for the 8 GB; per-user private memory (D2) not shown. | cheapest kill test: does AIRI give per-user memory separation and a headless voice loop? |
+
+## Hypotheses / defects found (Diagnose)
+
+| id | hypothesis | status | evidence | killed by |
+|---|---|---|---|---|
+| H1 | WS7 `init-broker.sh` fails when run as root (required to write `/etc`). | **verified** | Temp broker drops to `mosquitto` user, can't read 0640 root-owned DB in 0700 temp dir → every `mosquitto_ctrl` "Not authorized". Fixed locally (`user root` on the temp broker only). | — |
+| H2 | WS7 production broker can't start after install. | **verified** | `/etc/mosquitto/sc` and `certs/` left 0700 root:root, `server.key` 0600 → "Unable to load CA certificates … Permission denied". Fixed locally (root:mosquitto 0750 dirs, 0640 server key, CA key stays 0600 root). | — |
+| H3 | WS7 auth plugin never loads with the documented install. | **verified** | `sc.conf` goes in `/etc/mosquitto/conf.d/` and itself uses `include_dir /etc/mosquitto/sc/conf.d`; mosquitto 2.0.18 silently ignores nested `include_dir` → no dynsec, `allow_anonymous false` → every client refused → whole bus down. Tests miss it because `tests/security/harness.py` builds its own config with the plugin line inlined. **Not yet fixed.** | — |
+| H4 | CI coverage is much narrower than "CI green" implies. | **verified** | Workflows run only `test_airi_card`, `test_minilm`, `tests/contract`, avatar tests and reconcile dry-run. `tests/security`, backup, release and most unit tests never run in CI. | — |
+| H5 | #17 units start modules that don't exist. | **verified** | `sc-buddy` → `sentient.services.buddy`, `sc-health` → `sentient.services.health`: absent on every branch. WS5 (speech) PR never opened; `sc-speech` runs the old `sentient.services.voice`. | — |
+| H6 | `main` can't be installed. | **verified** | `pyproject.toml` build backend `setuptools.backends._legacy:_Backend` doesn't exist; `pip install -e .` fails. Fixed in #16 (unmerged). | — |
+| H7 | Perception can't import without the voice extra. | **verified** | `sentient.services.perception.*` → `ModuleNotFoundError: pyaudio`. | — |
+| H8 | Notifications leak to a public server. | **verified (config)** | `config/cortana.toml` → `ntfy.sh`, topic `cortana-sentient-core` (anyone who guesses the topic reads them). Conflicts with local-only rule. | — |
+| H9 | Which code is actually running on nanob is unknown. | open | Units mix `sentient.*`, `/opt/sentient-core/services/*`, `/home/cortana/...` venvs; an `/mnt/orin-ai/orin` native voice stack was last seen working 31 Oct. Needs A1 + inventory. | — |
+| H10 | nanob's identity/IP is uncertain. | open | .159 (memory) vs .168 (repo, also ATHENA). OS version conflict. | — |
+| H11 | Every user question was stored as a memory and outranked the answer later. | **verified, fixed** | On-device acceptance tool run here: D1 recall 1/20; questions in the store. After fix: 20/20 after restart with a 0.5B model, 0/5 leaks. Regression tests added. | — |
+| H12 | Voice turns would reveal Jack's private typed memories to whoever is in the room. | **verified (design), fixed** | sc-voice can't identify speakers. Default voice participants = whole household, so only things said with everyone present are speakable. Test added. | — |
+| H13 | Bearer tokens in clear text if sc-core is opened to the LAN. | **fixed** | LAN bind refused without TLS unless `allow_plain_lan`; `make-cert.sh`; real HTTPS test. | — |
+| H14 | Cancelled turn could leave `aplay` playing. | **verified, fixed** | Barge-in test; Player now kills aplay on cancellation; test added. | — |
+| H15 | whisper base.en accuracy on names ("Cortana" heard as "Kotano" from a Scottish Piper voice; "dog" once as "dub"). | open | Vocabulary prompt added; effect unmeasurable with synthetic speech. Measure with real voices on nanob (C1); fall back to small.en if needed. | — |
+| H16 | The pinned Jetson llama.cpp image runs `llama-server` with these flags. | open | Same image + flags as `scripts/jetson-models.sh`, never confirmed on nanob. First thing to check in step 4. | — |

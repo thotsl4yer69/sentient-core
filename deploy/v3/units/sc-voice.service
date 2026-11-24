@@ -1,0 +1,39 @@
+[Unit]
+Description=Sentient Core voice loop (wake word, VAD, STT, TTS, speakerphone)
+PartOf=sc.target
+Wants=sc-core.service sc-stt.service sound.target
+After=sc-core.service sc-stt.service sound.target
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+SupplementaryGroups=audio
+Environment=SCV_CONFIG=/etc/sc/voice.toml PYTHONUNBUFFERED=1
+ExecStart=/opt/sc/venv/bin/python -m sc.voice
+# The USB audio device can be absent at boot or unplugged later; sc-voice waits
+# and reconnects by itself, so a restart here is only for real crashes.
+Restart=always
+RestartSec=2
+RestartPreventExitStatus=78
+RuntimeDirectory=sc-voice
+RuntimeDirectoryMode=0755
+MemoryMax=700M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+DevicePolicy=closed
+DeviceAllow=char-alsa rw
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+SyslogIdentifier=sc-voice
+
+[Install]
+WantedBy=sc.target

@@ -1,0 +1,30 @@
+[Unit]
+Description=Sentient Core model server (llama.cpp llama-server, CUDA)
+PartOf=sc.target
+Requires=docker.service
+After=docker.service network-online.target
+
+# The model file is local (/opt/sc/models), so a cold boot needs no network.
+# The memory cap is docker --memory: a unit MemoryMax does not reach inside the
+# container's cgroup. CUDA on Tegra is unified memory; check tegrastats too.
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sc/llm.env
+ExecStartPre=-/usr/bin/docker rm -f sc-llm
+ExecStart=/usr/bin/docker run --rm --name sc-llm --runtime nvidia --network host \
+    --memory=${SC_LLM_MEMORY} --memory-swap=${SC_LLM_MEMORY} \
+    -v /opt/sc/models:/models:ro \
+    ${SC_LLM_IMAGE} llama-server \
+    -m /models/${SC_LLM_MODEL_FILE} \
+    --host 127.0.0.1 --port 18080 --ctx-size ${SC_LLM_CTX} \
+    --parallel 1 --n-gpu-layers 999 --jinja --cache-ram 0
+ExecStop=/usr/bin/docker stop -t 20 sc-llm
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
+TimeoutStopSec=40
+SyslogIdentifier=sc-llm
+
+[Install]
+WantedBy=sc.target

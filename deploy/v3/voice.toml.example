@@ -1,0 +1,37 @@
+# /etc/sc/voice.toml — sc-voice. Every key is optional; SCV_<KEY> env overrides.
+# Run `sudo -u sc /opt/sc/venv/bin/python -m sc.voice --list-devices` to see cards.
+
+core_url = "http://127.0.0.1:8770"
+token_file = "/etc/sc/voice.token"
+
+# Who is assumed to be speaking (there's no speaker identification yet), and
+# who counts as present. The speakerphone can't tell voices apart, so list the
+# whole household: Cortana then only recalls, out loud, things that were said
+# with everyone present. Things told to her privately (e.g. in AIRI with your
+# own token) never come out of the speaker. Listing only yourself makes your
+# private memories speakable to anyone in the room.
+speaker = "jack"
+participants = ["jack", "partner"]
+
+# USB audio: substring of the card name in /proc/asound/cards (case-insensitive).
+# The last known working device on nanob was a C-Media "USB PnP Sound Device".
+card_match = "USB"
+# capture_device = "plughw:CARD=Device,DEV=0"   # explicit override
+# playback_device = "plughw:CARD=Device,DEV=0"
+
+trigger = "wake"
+# Stock openWakeWord phrase that worked before. To use "Hey Cortana", train a
+# model (openWakeWord / microWakeWord trainer) and set the path to the .onnx.
+wake_model = "hey_jarvis"
+wake_threshold = 0.5
+
+vad_threshold = 0.5
+end_silence_ms = 700
+max_utterance_s = 15.0
+no_speech_timeout_s = 5.0
+follow_up_s = 6.0
+playback_guard_ms = 350
+
+stt_url = "http://127.0.0.1:18081"
+stt_prompt = "Cortana, Jack, Biscuit, nanob, Sentient Core."
+tts_voice = "/opt/sc/models/piper/en_GB-alba-medium.onnx"
