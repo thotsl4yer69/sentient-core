@@ -67,3 +67,6 @@ static/icons/generate_icons.py
 models/*.onnx
 models/*.engine
 models/*.trt
+
+# Model files fetched by python -m sc.embed --fetch / the installer
+/models/
