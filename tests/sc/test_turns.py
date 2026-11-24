@@ -89,17 +89,18 @@ async def test_cancel_mid_stream_closes_server_stream(fake_llm):
     await eng.llm.close()
 
 
-async def test_voice_queue_deadline_rejects(fake_llm):
+async def test_chat_queue_deadline_rejects(fake_llm):
+    """A chat turn that can't start in time is rejected (voice turns pre-empt
+    instead of queueing, see below)."""
     fake_llm.script.tokens = ["x"] * 30
     fake_llm.script.token_delay = 0.05
-    eng = engine_for(fake_llm.url, vq=0.3)
-    other_voice = Turn(kind="voice", user="jack")
-    late_voice = Turn(kind="voice", user="partner")
-    first = asyncio.create_task(collect(eng, other_voice))
+    eng = engine_for(fake_llm.url, cq=0.3)
+    first = asyncio.create_task(collect(eng, Turn(kind="chat", user="jack")))
     await asyncio.sleep(0.1)
+    late = Turn(kind="chat", user="partner")
     with pytest.raises(TurnRejected):
-        await collect(eng, late_voice)
-    assert late_voice.status == "rejected"
+        await collect(eng, late)
+    assert late.status == "rejected"
     await first
     await eng.llm.close()
 
@@ -159,4 +160,54 @@ async def test_server_503_is_unavailable(fake_llm):
     eng = engine_for(fake_llm.url)
     with pytest.raises(LLMUnavailable):
         await collect(eng, Turn(kind="chat", user="jack"))
+    await eng.llm.close()
+
+
+async def test_cancel_while_model_holds_headers(fake_llm):
+    """llama-server can hold response headers during prompt processing; a cancel
+    must still free the model at once (review finding)."""
+    fake_llm.script.header_delay = 5.0
+    eng = engine_for(fake_llm.url, cft=10.0, ct=20.0)
+    turn = Turn(kind="chat", user="jack")
+    task = asyncio.create_task(collect(eng, turn))
+    await asyncio.sleep(0.3)
+    t0 = time.monotonic()
+    eng.cancel(turn.id, "barge-in")
+    with pytest.raises(LLMCancelled):
+        await task
+    assert time.monotonic() - t0 < 0.5
+    assert eng.active is None
+    await asyncio.sleep(0.3)
+    assert fake_llm.disconnects == 1, "the pending request must be aborted"
+    await eng.llm.close()
+
+
+async def test_new_voice_turn_preempts_older_voice_turn_without_retry(fake_llm):
+    fake_llm.script.tokens = ["x"] * 40
+    fake_llm.script.token_delay = 0.05
+    eng = engine_for(fake_llm.url, vq=0.5)
+    old = Turn(kind="voice", user="jack")
+    old_task = asyncio.create_task(collect(eng, old))
+    await asyncio.sleep(0.3)
+    fake_llm.script = type(fake_llm.script)(tokens=["new"])
+    new = Turn(kind="voice", user="jack")
+    assert await collect(eng, new) == ["new"]
+    with pytest.raises(TurnPreempted):
+        await old_task
+    assert old.status == "cancelled" and new.status == "completed"
+    assert len(fake_llm.requests) == 2, "an abandoned voice turn is not retried"
+    await eng.llm.close()
+
+
+async def test_preempted_voice_turn_before_text_is_not_retried(fake_llm):
+    fake_llm.script.first_delay = 1.0
+    eng = engine_for(fake_llm.url, vq=0.5, vft=3.0)
+    old = Turn(kind="voice", user="jack")
+    old_task = asyncio.create_task(collect(eng, old))
+    await asyncio.sleep(0.2)
+    fake_llm.script = type(fake_llm.script)(tokens=["new"])
+    assert await collect(eng, Turn(kind="voice", user="jack")) == ["new"]
+    with pytest.raises(TurnPreempted):
+        await old_task
+    assert len(fake_llm.requests) == 2
     await eng.llm.close()

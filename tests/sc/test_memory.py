@@ -148,6 +148,24 @@ def test_near_duplicate_refreshes_instead_of_inserting(store):
     assert c != a, "same words from a different audience must stay separate"
 
 
+def test_same_words_from_two_people_stay_separate(store):
+    """Review finding: dedupe must not merge two people's identical facts."""
+    both = store.open_session(["jack", "partner"], idle_s=IDLE)
+    a = store.remember(both, "jack", "Remember I am allergic to peanuts")
+    b = store.remember(both, "partner", "Remember I am allergic to peanuts")
+    assert a != b and store.stats()["memories"] == 2
+    got = store.recall(both, "who is allergic to peanuts", k=4, min_score=0.3)
+    assert {m.speaker for m in got} == {"jack", "partner"}
+    path = store.path
+    store.close()
+    reopened = MemoryStore(path, store.encoder)  # the in-RAM index keeps speakers after reload
+    try:
+        s = reopened.open_session(["jack", "partner"], idle_s=IDLE)
+        assert reopened.remember(s, "partner", "Remember I am allergic to peanuts.") == b
+    finally:
+        reopened.close()
+
+
 def test_forget_removes_from_recall(store):
     s = store.open_session(["jack"], idle_s=IDLE)
     mid = store.remember(s, "jack", "The shed padlock combination is written on the fridge")

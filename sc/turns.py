@@ -5,8 +5,9 @@ serialises generations and enforces the turn rules:
 
 * a voice turn must start within ``voice_queue_s`` (default 2 s) or it is dropped
   with a spoken apology; a chat turn may wait ``chat_queue_s``;
-* a voice turn pre-empts a running chat turn. If the chat turn had not produced
-  any text yet it is retried once automatically; if it had, its reply ends early;
+* a voice turn pre-empts whatever is running. A pre-empted chat turn that had
+  not produced any text yet is retried once automatically; otherwise (and for
+  an older voice turn) the reply ends early;
 * any turn can be cancelled by id (barge-in, client disconnect);
 * first-token and total deadlines come from the LLM client.
 """
@@ -108,8 +109,11 @@ class TurnEngine:
             self._waiting.append(entry)
             self._waiting.sort(key=lambda e: (e[0], e[1]))
             active = self._active
-            if turn.kind == "voice" and active is not None and active.kind == "chat":
-                logger.info("voice turn %s pre-empts chat turn %s", turn.id, active.id)
+            # A new voice turn wins: over chat (which retries if it hadn't
+            # replied yet) and over an older voice turn (the person has spoken
+            # again, so the old one was abandoned, e.g. after a barge-in).
+            if turn.kind == "voice" and active is not None:
+                logger.info("voice turn %s pre-empts %s turn %s", turn.id, active.kind, active.id)
                 active.stop("preempted")
             try:
                 while True:
@@ -174,7 +178,7 @@ class TurnEngine:
                     return
                 except LLMCancelled:
                     if turn.reason == "preempted":
-                        if emitted == 0 and not retried:
+                        if turn.kind == "chat" and emitted == 0 and not retried:
                             # Nothing reached the client yet: wait for the voice
                             # turn and start again, once.
                             retried = True

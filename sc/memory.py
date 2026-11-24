@@ -154,6 +154,7 @@ class MemoryStore:
         # In-RAM index for recall: ids, participant sets, float16 embeddings.
         self._ids: list[int] = []
         self._who: list[frozenset[str]] = []
+        self._speaker: list[str] = []
         self._vecs = np.zeros((0, 384), dtype=np.float16)
         self._load_index()
 
@@ -178,9 +179,12 @@ class MemoryStore:
 
     def _load_index(self) -> None:
         with self._lock:
-            rows = self._db.execute("SELECT id, participants, embedding FROM memories ORDER BY id").fetchall()
+            rows = self._db.execute(
+                "SELECT id, participants, embedding, speaker FROM memories ORDER BY id"
+            ).fetchall()
             self._ids = [r[0] for r in rows]
             self._who = [frozenset(json.loads(r[1])) for r in rows]
+            self._speaker = [r[3] for r in rows]
             if rows:
                 self._vecs = np.stack(
                     [np.frombuffer(r[2], dtype=np.float32) for r in rows]
@@ -257,7 +261,8 @@ class MemoryStore:
                  *, importance: float | None = None, now: float | None = None) -> int | None:
         """Store what ``speaker`` said, heard by everyone in ``session``.
         Returns the memory id, or None if it wasn't worth storing.
-        A near-duplicate heard by the same people just refreshes its timestamp."""
+        A near-duplicate from the same speaker heard by the same people just
+        refreshes its timestamp."""
         now = time.time() if now is None else now
         imp = self.worth_remembering(text) if importance is None else importance
         if imp <= 0:
@@ -270,7 +275,9 @@ class MemoryStore:
                 for idx in np.argsort(-sims)[:5]:
                     if sims[idx] < self.dedupe_threshold:
                         break
-                    if self._who[idx] == who:
+                    # Same words, same audience AND same person: otherwise two
+                    # people's identical facts would merge into one.
+                    if self._who[idx] == who and self._speaker[idx] == speaker:
                         mid = self._ids[idx]
                         db.execute(
                             "UPDATE memories SET ts=?, importance=MAX(importance, ?), text=? WHERE id=?",
@@ -285,6 +292,7 @@ class MemoryStore:
             mid = int(cur.lastrowid)
             self._ids.append(mid)
             self._who.append(who)
+            self._speaker.append(speaker)
             self._vecs = np.vstack([self._vecs, vec.astype(np.float16)[None, :]])
             return mid
 

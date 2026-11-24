@@ -10,6 +10,7 @@ sc-voice: same endpoint with a ``speaker``-scoped token plus extension fields
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -17,14 +18,14 @@ import uuid
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.cors import CORSMiddleware
 
 from sc.auth import AuthError, Principal, TokenStore, authenticate
 from sc.brain import Brain, TurnRequest
 from sc.config import Settings
-from sc.llm import LLMError, LLMTimeout, LLMUnavailable
+from sc.llm import LLMCancelled, LLMError, LLMTimeout, LLMUnavailable
 from sc.turns import TurnRejected
 
 logger = logging.getLogger("sc.api")
@@ -132,6 +133,27 @@ def _status_for(exc: Exception) -> ApiError:
     return ApiError(500, "internal_error", "Internal error.", "server_error")
 
 
+class ClientGone(Exception):
+    """The HTTP client disconnected before the reply started."""
+
+
+async def _until_first(request: Request, step: asyncio.Future, turn) -> Any:
+    """Await ``step`` (the first delta, or a whole non-stream reply) but stop the
+    turn as soon as the client goes away, so an abandoned turn (e.g. a
+    barge-in while Cortana is still thinking) frees the model at once."""
+    while True:
+        done, _ = await asyncio.wait({step}, timeout=0.1)
+        if done:
+            return step.result()
+        if await request.is_disconnected():
+            turn.stop("client-gone")
+            try:
+                await step
+            except (StopAsyncIteration, LLMCancelled, LLMError, TurnRejected):
+                pass
+            raise ClientGone
+
+
 def create_app(settings: Settings, brain: Brain, tokens: TokenStore) -> FastAPI:
     app = FastAPI(title="Sentient Core", version="3", docs_url=None, redoc_url=None, openapi_url=None)
     if settings.cors_origins:
@@ -206,11 +228,23 @@ def create_app(settings: Settings, brain: Brain, tokens: TokenStore) -> FastAPI:
         created = int(time.time())
         completion_id = "chatcmpl-" + uuid.uuid4().hex[:24]
 
+        try:
+            prepared = await brain.prepare(req)
+        except ValueError as exc:
+            raise ApiError(400, "invalid_message", str(exc)) from None
+        turn = prepared[0]
+
         if not body.stream:
-            result = None
-            try:
-                async for _, result in brain.respond(req):
+            async def collect():
+                last = None
+                async for _, last in brain.respond(req, prepared):
                     pass
+                return last
+
+            try:
+                result = await _until_first(request, asyncio.ensure_future(collect()), turn)
+            except ClientGone:
+                return Response(status_code=499)
             except (TurnRejected, LLMError) as exc:
                 raise _status_for(exc) from None
             assert result is not None
@@ -230,11 +264,14 @@ def create_app(settings: Settings, brain: Brain, tokens: TokenStore) -> FastAPI:
 
         # Streaming: start the turn first so a refusal before any text is a
         # proper HTTP error, not a broken stream.
-        stream = brain.respond(req)
+        stream = brain.respond(req, prepared)
         try:
-            first = await stream.__anext__()
+            first = await _until_first(request, asyncio.ensure_future(stream.__anext__()), turn)
         except StopAsyncIteration:
             first = None
+        except ClientGone:
+            await stream.aclose()
+            return Response(status_code=499)
         except (TurnRejected, LLMError) as exc:
             await stream.aclose()
             raise _status_for(exc) from None
@@ -261,7 +298,7 @@ def create_app(settings: Settings, brain: Brain, tokens: TokenStore) -> FastAPI:
                 await stream.aclose()
             yield b"data: [DONE]\n\n"
 
-        turn_id = first[1].turn.id if first else ""
+        turn_id = turn.id
         return StreamingResponse(
             events(), media_type="text/event-stream",
             headers={"Cache-Control": "no-store", "X-SC-Turn-Id": turn_id, "X-Accel-Buffering": "no"},

@@ -50,6 +50,7 @@ class Script:
     tokens: list[str] = field(default_factory=lambda: ["Hello", " there", "."])
     first_delay: float = 0.0
     token_delay: float = 0.0
+    header_delay: float = 0.0   # like llama-server holding headers during prompt processing
     status: int = 200
 
 
@@ -80,6 +81,12 @@ async def fake_llm():
         sc = state.script
         if sc.status != 200:
             return web.json_response({"error": {"message": "loading"}}, status=sc.status)
+        if sc.header_delay:
+            try:
+                await asyncio.sleep(sc.header_delay)
+            except asyncio.CancelledError:
+                state.disconnects += 1
+                raise
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         await resp.prepare(request)
         state.active += 1
@@ -105,7 +112,9 @@ async def fake_llm():
     app.router.add_get("/health", health)
     app.router.add_get("/v1/models", models)
     app.router.add_post("/v1/chat/completions", chat)
-    runner = web.AppRunner(app, shutdown_timeout=1)
+    # handler_cancellation: like llama-server, notice a client hanging up even
+    # while nothing is being written (e.g. during prompt processing).
+    runner = web.AppRunner(app, shutdown_timeout=1, handler_cancellation=True)
     await runner.setup()
     port = _free_port()
     site = web.TCPSite(runner, "127.0.0.1", port)

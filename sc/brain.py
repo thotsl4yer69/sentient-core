@@ -106,11 +106,12 @@ class Brain:
         await asyncio.to_thread(self.store.remember, session, speaker, text)
         return turn, session, messages, len(memories)
 
-    async def respond(self, req: TurnRequest) -> AsyncIterator[tuple[str, TurnResult]]:
+    async def respond(self, req: TurnRequest, prepared=None) -> AsyncIterator[tuple[str, TurnResult]]:
         """Yield ``(delta, result)`` pairs; ``result`` is the same object each
         time and is complete after the iterator ends. Voice turns never raise
-        for model failures: they yield a spoken fallback instead."""
-        turn, session, messages, recalled = await self.prepare(req)
+        for model failures: they yield a spoken fallback instead. ``prepared``
+        is the result of :meth:`prepare` when the caller needs the turn first."""
+        turn, session, messages, recalled = prepared if prepared is not None else await self.prepare(req)
         result = TurnResult(turn=turn, session=session, recalled=recalled)
         started = time.monotonic()
         try:

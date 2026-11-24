@@ -114,13 +114,26 @@ class LLMClient:
             "cache_prompt": True,
         }
         http = await self._http()
+        # llama-server may hold the response headers while it processes the
+        # prompt, so race the request itself against cancellation too.
+        post = asyncio.ensure_future(http.post(f"{self.base_url}/v1/chat/completions", json=payload))
+        waiter = asyncio.ensure_future(cancel.wait())
         try:
-            response = await asyncio.wait_for(
-                http.post(f"{self.base_url}/v1/chat/completions", json=payload),
-                timeout=min(first_token_s, total_s),
-            )
-        except asyncio.TimeoutError as exc:
-            raise LLMTimeout("model server did not accept the request in time") from exc
+            done, _ = await asyncio.wait({post, waiter}, timeout=min(first_token_s, total_s),
+                                         return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            waiter.cancel()
+        if post not in done:
+            post.cancel()  # aborts the connection; llama-server drops the task
+            try:
+                await post
+            except (asyncio.CancelledError, aiohttp.ClientError):
+                pass
+            if cancel.is_set():
+                raise LLMCancelled("turn cancelled before the model answered")
+            raise LLMTimeout("model server did not accept the request in time")
+        try:
+            response = post.result()
         except aiohttp.ClientError as exc:
             raise LLMUnavailable(f"model server unreachable: {exc}") from exc
         try:
