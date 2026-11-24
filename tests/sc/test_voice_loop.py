@@ -354,6 +354,7 @@ async def test_real_model_end_to_end(models, tts, person, real_llm_url, core_pro
     await run_until(loop, lambda: len(loop.records) >= 2 and loop.state == "idle", 60)
     assert len(loop.records) >= 2, [(r.transcript, r.outcome) for r in loop.records]
     last = loop.records[1]
+    summary = [(r.transcript, r.outcome, r.reply, r.first_audio_s) for r in loop.records]
+    assert last.outcome == "ok" and last.reply.strip(), summary
     print(f"\nreal model reply: {last.reply!r}; first audio {last.first_audio_s:.2f}s")
-    assert last.outcome == "ok" and last.reply.strip()
     assert "biscuit" in last.reply.lower()
