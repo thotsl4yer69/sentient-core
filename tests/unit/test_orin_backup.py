@@ -290,6 +290,50 @@ class OrinBackupTests(unittest.TestCase):
         self.assertEqual(len(verified['git']), 2)
         self.assertTrue(all(item['diff_applies'] for item in verified['git']))
 
+    def test_untracked_files_keep_their_mode(self) -> None:
+        script = self.fx.dirty_repo / 'start-local.sh'
+        script.write_text('#!/bin/sh\necho local\n', encoding='utf-8')
+        script.chmod(0o755)
+        result = ob.backup(self.req, self.tmp / 'dest')
+        scratch = self.tmp / 'scratch'
+        ob.verify(Path(result['archive']), scratch, self.fx.identity)
+        restored = list((scratch / 'restored').glob('git/*/untracked/start-local.sh'))
+        self.assertEqual(len(restored), 1)
+        self.assertEqual(restored[0].stat().st_mode & 0o777, 0o755)
+
+    @unittest.skipIf(os.geteuid() == 0, 'root can list a mode-0 directory; CI also runs this as a normal user')
+    def test_unreadable_subdirectory_fails(self) -> None:
+        hidden = self.fx.runtime / 'voice' / 'private'
+        hidden.mkdir()
+        (hidden / 'keys.txt').write_text('needed\n', encoding='utf-8')
+        hidden.chmod(0)
+        try:
+            with self.assertRaises(ob.BackupError) as caught:
+                ob.backup(self.req, self.tmp / 'dest')
+            self.assertIn('private', str(caught.exception))
+            self.assertFalse((self.tmp / 'dest').exists())
+        finally:
+            hidden.chmod(0o755)
+
+    def test_walk_errors_are_problems(self) -> None:
+        """Same as above, for root: a directory os.walk can't list (EIO, a
+        squashed network mount) must fail the run, not vanish from it."""
+        real_walk = os.walk
+
+        def failing_walk(top, *args, **kwargs):
+            onerror = kwargs.get('onerror')
+            if onerror is not None:
+                onerror(PermissionError(13, 'Permission denied', str(Path(top) / 'voice' / 'private')))
+            yield from real_walk(top, *args, **kwargs)
+
+        ob.os.walk = failing_walk
+        try:
+            records, problems = ob.walk_records(self.fx.runtime, 'runtime')
+        finally:
+            ob.os.walk = real_walk
+        self.assertTrue(records)
+        self.assertTrue(any('voice/private' in item for item in problems), problems)
+
     def test_sqlite_online_backup_excludes_uncommitted_rows(self) -> None:
         writer = sqlite3.connect(self.fx.sqlite_path)
         writer.execute('begin')

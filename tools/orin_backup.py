@@ -351,7 +351,12 @@ def walk_records(root: Path, prefix: str) -> tuple[list[dict], list[str]]:
         return records, [f'{root} does not exist']
     if not root.is_dir():
         return records, [f'{root} is not a directory']
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+    def unreadable(exc: OSError) -> None:
+        # Without this, os.walk skips a directory it can't list and the backup
+        # (and its verify) would pass without those files.
+        problems.append(f'cannot read directory {exc.filename}: {exc.strerror or exc}')
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=unreadable):
         current = Path(dirpath)
         real_dirs: list[str] = []
         for name in dirnames:
@@ -919,9 +924,10 @@ def backup_git(info: dict, payload: Path, index: int) -> dict:
         'diff_empty': diff.stdout == b'',
     }
     (root / 'meta.json').write_text(json.dumps(meta, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-    for path in root.rglob('*'):
-        if path.is_file() and not path.is_symlink():
-            os.chmod(path, 0o600 if path.name != 'meta.json' else 0o600)
+    # The files written here are private; untracked files keep the mode they
+    # were copied with (an executable script must restore as executable).
+    for name in ('repo.bundle', 'dirty.diff', 'status.z', 'HEAD', 'meta.json'):
+        os.chmod(root / name, 0o600)
     return meta
 
 
@@ -1215,9 +1221,13 @@ def load_sums(path: Path) -> dict[str, str]:
     return found
 
 
+def _restored_unreadable(exc: OSError) -> None:
+    raise BackupError(f'cannot read restored directory {exc.filename}: {exc.strerror or exc}')
+
+
 def iter_restored(root: Path) -> list[Path]:
     found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=_restored_unreadable):
         current = Path(dirpath)
         kept: list[str] = []
         for name in dirnames:
