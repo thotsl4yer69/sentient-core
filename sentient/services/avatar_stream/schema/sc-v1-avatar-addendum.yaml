@@ -1,0 +1,58 @@
+# Addendum for WS6. Not a replacement for contract/mqtt.yaml.
+# Prefix is sc/v1, matching the approved v2 stack design.
+# The open WS6 branch currently writes orin/v1. See docs/contract-avatar-addendum.md.
+contract_version: 1
+prefix: sc/v1
+addendum: avatar
+changes:
+  - id: turn/cancel
+    topic: sc/v1/turn/cancel
+    add_subscribers:
+      - sc-avatar-display
+      - sc-avatar-stream
+  - id: tts/state
+    topic: sc/v1/tts/state
+    add_publishers:
+      - sc-avatar-display
+    add_subscribers:
+      - sc-speech
+    add_state_enum:
+      - playback_start
+      - playback_end
+    notes: >
+      playback_start and playback_end are the display speaker edges.
+      sc-speech uses them, with turn_id, for the self-trigger guard and barge-in.
+      Existing synthesis states stay as they are.
+  - id: avatar/state
+    topic: sc/v1/avatar/state
+    add_subscribers:
+      - sc-avatar-display
+    add_properties:
+      mood:
+        type: string
+        enum: [neutral, happy, angry, sad, fear, disgust, love, sleep]
+      gaze:
+        type: object
+        properties:
+          x: {type: number}
+          y: {type: number}
+      gesture:
+        type: string
+        enum: [handup, index, ok, thumbup, thumbdown, side, shrug, namaste]
+stream:
+  transport: websocket
+  not_mqtt: true
+  port: 8077
+  auth:
+    first_message:
+      type: auth
+      role: [display, ingest]
+      token: shared secret, display and ingest use different secrets
+    failure_close_code: 4401
+  turn:
+    text_header: [turn_id, sample_rate, visemes, vtimes, vdurations, alignments on ingest]
+    binary: s16le mono PCM
+  cancel:
+    type: cancel
+    turn_id: required
+    reason: optional

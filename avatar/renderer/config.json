@@ -1,0 +1,13 @@
+{
+  "modelUrl": "models/mpfb.glb",
+  "body": "F",
+  "brokerUrl": "",
+  "topicPrefix": "sc/v1",
+  "mqttUsername": "sc-avatar-display",
+  "mqttPassword": "",
+  "streamUrl": "",
+  "streamToken": "",
+  "mirror": true,
+  "debug": false,
+  "sampleRate": 22050
+}

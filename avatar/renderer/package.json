@@ -1,0 +1,11 @@
+{
+  "name": "sc-avatar-renderer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

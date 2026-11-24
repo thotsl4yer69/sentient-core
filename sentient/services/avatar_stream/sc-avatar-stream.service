@@ -1,0 +1,28 @@
+[Unit]
+Description=SC avatar audio and viseme stream
+PartOf=sc.target
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+WorkingDirectory=/opt/sc/current
+Environment=PYTHONUNBUFFERED=1
+Environment=SC_AVATAR_STREAM_BIND=0.0.0.0
+Environment=SC_AVATAR_STREAM_PORT=8077
+Environment=SC_TOPIC_PREFIX=sc/v1
+Environment=SC_CONFIG=/var/lib/sc/config/sc.toml
+EnvironmentFile=-/etc/sc/secrets.env
+ExecStart=/opt/sc/current/venv/bin/python -m sentient.services.avatar_stream
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-avatar-stream
+
+[Install]
+WantedBy=sc.target

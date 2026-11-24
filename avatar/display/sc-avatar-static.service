@@ -1,0 +1,20 @@
+[Unit]
+Description=SC avatar renderer static files
+PartOf=sc.target
+After=network.target
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+ExecStart=/usr/bin/python3 /opt/sc/avatar-display/bin/static_server.py --bind 127.0.0.1 --port 8090 --dir /opt/sc/avatar-display/www
+Restart=on-failure
+RestartSec=2
+MemoryMax=128M
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sc-avatar-static
+
+[Install]
+WantedBy=sc.target
