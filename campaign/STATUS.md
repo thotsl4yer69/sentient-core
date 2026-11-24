@@ -15,7 +15,8 @@ still NOT TESTED.
 | sc-llm container on Jetson | 1 | image + flags copied from scripts/jetson-models.sh; unconfirmed (H16) |
 | whisper.cpp CUDA build | 1 | CPU build verified; CUDA flags (sm_87) unverified |
 | TLS for LAN/AIRI | 2 | real HTTPS process test with local CA |
-| AIRI → sc-core | 1 | OpenAI-compatible shape tested; never with the real AIRI app |
+| AIRI → sc-core | 2 | AIRI's own client library (xsAI 0.5.1) streams with context against real llama-server; CORS preflight checked; never with the AIRI app itself (B2) |
+| Backup + restore (A2) | 2 | real Redis/SQLite/git/age backup, verify, Redis snapshot restored 52/52 keys, then imported by sc.migrate; never on nanob |
 | Acceptance tool | 2 | exercised here; A1/G1 correctly fail off-Jetson |
 | nanob | unknown | not reachable; identity/IP/OS unverified (H9, H10) |
 

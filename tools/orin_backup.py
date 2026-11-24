@@ -668,7 +668,14 @@ def scan(request: BackupRequest, dest: Path) -> tuple[list[str], dict]:
 
     etc_plan = []
     for path in request.etc_paths:
-        if not path.exists():
+        try:
+            present = path.exists()
+        except PermissionError:
+            # e.g. /etc/redis is 0750 redis:redis; keep checking the rest so the
+            # operator sees every problem in one run.
+            failures.append(f'/etc path cannot be inspected (permission denied; run with sudo): {path}')
+            continue
+        if not present:
             failures.append(f'/etc path does not exist: {path}')
             continue
         resolved = path.resolve()
@@ -1485,6 +1492,14 @@ def main(argv: list[str] | None = None) -> int:
                             age_bin=args.age_bin)
     except BackupError as exc:
         print(str(exc), file=sys.stderr)
+        return 1
+    except OSError as exc:
+        # Permission or disk errors outside the named checks (a root-only /etc
+        # path when not run with sudo, a full disk). backup() has already removed
+        # anything it wrote; say what failed instead of printing a traceback.
+        where = f'{exc.filename}: ' if exc.filename else ''
+        hint = ' (run with sudo)' if isinstance(exc, PermissionError) else ''
+        print(f'{where}{exc.strerror or exc}{hint}', file=sys.stderr)
         return 1
     json.dump(result, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write('\n')

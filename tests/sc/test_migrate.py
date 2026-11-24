@@ -75,3 +75,31 @@ def test_import_is_private_idempotent_and_recallable(redis_client, tmp_path, enc
         assert redis_client.zcard("memory:episodic:index") == 4, "Redis is read-only for the import"
     finally:
         store.close()
+
+
+def test_unexpected_layout_stops_before_writing(redis_client, tmp_path, encoder):
+    """nanob's Redis has never been seen. A layout the legacy engine doesn't write
+    must stop the import with a clear message, not a traceback halfway through."""
+    from sc.migrate import LayoutError
+
+    legacy_episode(redis_client, "a1", "My workshop is in the back shed", "Got it.", 1_700_000_000.0)
+    redis_client.set("memory:core", json.dumps({"name": "Jack"}))  # a string, not a hash
+    store = MemoryStore(tmp_path / "sc.db", encoder)
+    try:
+        with pytest.raises(LayoutError, match="memory:core is a string, expected a hash"):
+            run(redis_client, store, "jack", dry_run=False)
+        assert store.stats()["memories"] == 0, "nothing is imported from a layout that doesn't match"
+    finally:
+        store.close()
+
+
+def test_one_malformed_episode_is_counted_not_fatal(redis_client, tmp_path, encoder):
+    legacy_episode(redis_client, "a1", "My workshop is in the back shed", "Got it.", 1_700_000_000.0)
+    redis_client.set("memory:episodic:bad", "not a hash")
+    redis_client.zadd("memory:episodic:index", {"bad": 1_700_000_050.0})
+    store = MemoryStore(tmp_path / "sc.db", encoder)
+    try:
+        report = run(redis_client, store, "jack", dry_run=False)
+        assert (report.episodic_imported, report.errors) == (1, 1)
+    finally:
+        store.close()

@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.10'   # nanob runs Python 3.10
       - name: System packages
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq redis-server shellcheck openssl alsa-utils cmake build-essential iproute2
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq redis-server shellcheck openssl alsa-utils cmake build-essential iproute2 age
       - name: Install
         run: |
           python -m pip install --upgrade pip
@@ -34,6 +34,10 @@ jobs:
           bash -n deploy/v3/install.sh
       - name: Tests (sc)
         run: python -m pytest -q -rs tests/sc --ignore=tests/sc/test_voice_loop.py
+      - name: Tests (backup tool, run as a normal user and as root)
+        run: |
+          python -m pytest -q -rs tests/unit/test_orin_backup.py
+          sudo -E env "PATH=$PATH" python -m pytest -q -rs -p no:cacheprovider tests/unit/test_orin_backup.py
       - name: Installer dry run
         run: sudo bash deploy/v3/install.sh --dry-run --allow-non-jetson --skip-model --skip-image --users jack,partner --voice
 
@@ -47,6 +51,7 @@ jobs:
       SC_TEST_SILERO: ${{ github.workspace }}/ext/voice/silero_vad.onnx
       SC_TEST_OWW_DIR: ${{ github.workspace }}/ext/voice/openwakeword
       SC_TEST_WHISPER_URL: http://127.0.0.1:18081
+      SC_TEST_AIRI: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -98,6 +103,7 @@ jobs:
           python -m pip install --no-deps "openwakeword==0.6.0"
           python -m sc.embed --fetch
           sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+          npm ci --prefix tests/airi --no-audit --no-fund
       - name: Start whisper-server
         run: |
           ext/whisper.cpp/build/bin/whisper-server -m ext/voice/ggml-base.en.bin --host 127.0.0.1 --port 18081 \

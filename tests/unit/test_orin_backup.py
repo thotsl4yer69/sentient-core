@@ -395,6 +395,7 @@ class OrinBackupTests(unittest.TestCase):
         self.assertIn('RDB', str(caught.exception))
         self.assertFalse(dest.exists())
 
+    @unittest.skipIf(os.geteuid() == 0, 'root can read a mode-0 file; CI also runs this as a normal user')
     def test_unreadable_file_fails(self) -> None:
         target = self.fx.runtime / 'voice' / 'handsfree.py'
         target.chmod(0)
@@ -593,3 +594,23 @@ class OrinBackupTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OsErrorReportingTests(unittest.TestCase):
+    def test_permission_error_is_a_clean_message_not_a_traceback(self) -> None:
+        import contextlib
+        import io
+
+        def denied(*_args, **_kwargs):
+            raise PermissionError(13, 'Permission denied', '/etc/redis/redis.conf')
+
+        err = io.StringIO()
+        original = ob.backup
+        ob.backup = denied
+        try:
+            with contextlib.redirect_stderr(err):
+                code = ob.main(['backup', '--dest', '/nonexistent-dest', '--no-discover'])
+        finally:
+            ob.backup = original
+        self.assertEqual(code, 1)
+        self.assertIn('/etc/redis/redis.conf: Permission denied (run with sudo)', err.getvalue())

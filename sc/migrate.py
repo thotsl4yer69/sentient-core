@@ -45,8 +45,26 @@ class Report:
     errors: int = 0
 
 
+class LayoutError(RuntimeError):
+    """The Redis data isn't in the layout the legacy memory engine writes."""
+
+
+# What sentient/services/memory/engine.py (and services/memory.py) write.
+_EXPECTED_TYPES = {EPISODIC_INDEX: "zset", CORE: "hash"}
+
+
 def _decode(v):
     return v.decode("utf-8", "replace") if isinstance(v, (bytes, bytearray)) else v
+
+
+def _check_layout(redis_client) -> None:
+    wrong = []
+    for key, want in _EXPECTED_TYPES.items():
+        got = _decode(redis_client.type(key))
+        if got not in (want, "none"):
+            wrong.append(f"{key} is a {got}, expected a {want}")
+    if wrong:
+        raise LayoutError("; ".join(wrong) + " — nothing imported")
 
 
 def _core_text(key: str, value) -> str:
@@ -60,12 +78,22 @@ def run(redis_client, store: MemoryStore, owner: str, *, dry_run: bool) -> Repor
     report = Report()
     who = people([owner])
     session = Session(id="legacy-redis-import", participants=who, started=0.0, last_active=0.0)
+    _check_layout(redis_client)
 
     for raw_id in redis_client.zrange(EPISODIC_INDEX, 0, -1):
         mid = _decode(raw_id)
         report.episodic_seen += 1
+        key = f"{EPISODIC}:{mid}"
+        kind = _decode(redis_client.type(key))
+        if kind != "hash":
+            if kind == "none":
+                report.skipped += 1
+            else:
+                report.errors += 1
+                logger.warning("episodic %s is a %s, expected a hash", mid, kind)
+            continue
         try:
-            data = redis_client.hget(f"{EPISODIC}:{mid}", "interaction")
+            data = redis_client.hget(key, "interaction")
             if data is None:
                 report.skipped += 1
                 continue
@@ -116,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
         before = store.stats()["memories"]
         report = run(client, store, args.owner, dry_run=args.dry_run)
         after = store.stats()["memories"]
+    except LayoutError as exc:
+        print(f"legacy Redis layout not recognised: {exc}", file=sys.stderr)
+        return 2
     finally:
         store.close()
     mode = "DRY RUN — nothing written" if args.dry_run else "imported"
