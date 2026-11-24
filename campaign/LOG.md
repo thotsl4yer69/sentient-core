@@ -1,0 +1,18 @@
+# LOG
+
+- 2026-11-24 — Campaign opened. Mode: Diagnose + Build. Repo `thotsl4yer69/sentient-core` @ `416a0ee` (main). Older repos (`sentient_core`, `sentient-core-v4`, `sentient-aura-system`, `cortana`) not used.
+- 2026-11-24 — `main`: `pip install -e .` fails (bad build backend, H6). 34 tests pass; none cover conversation/memory/voice/perception.
+- 2026-11-24 — Found 8 open workstream PRs (#13–#20, 17 Nov, Cursor agent) implementing a gated sc-\* rebuild. All 8 merge cleanly into a local integration branch. Clean venv + MiniLM fetched: 180 passed; 1 failure is root-only (backup unreadable-file test).
+- 2026-11-24 — WS7 broker: reproduced 3 install defects with real mosquitto 2.0.18 run as root (H1, H2, H3). H1/H2 fixed locally and verified with real client logins; H3 open. Security suite 52/53 as non-root.
+- 2026-11-24 — CI only runs a subset of tests (H4). #17 units reference missing modules (H5).
+- 2026-11-24 — Reference designs: Jarvis-home (Orin Nano Super 8 GB: Gemma 4 E2B llama.cpp, whisper.cpp base.en, Piper, Silero VAD, USB speakerphone; STT ~300 ms, LLM first token ~500 ms) and maxmlang/jetson-voice-assistant (2.5–3.5 s per reply).
+- 2026-11-24 — nanob not reachable from this session; no device bridge attached.
+- 2026-11-24 — Jack: "Rebuild it completely to the optimal system"; access via a linked LAN machine (not linked yet); PR approved.
+- 2026-11-24 — Slice 1 sc-core: real llama-server (llama.cpp c74c71a, CPU) + Qwen2.5-0.5B test model + real MiniLM. 10/10 turns with context; memory survives restart; partner sees 0 of Jack's memories; client disconnect frees the model.
+- 2026-11-24 — Installer run for real here (as root, systemctl stubbed), twice (idempotent); installed sc-core runs as user `sc` from /opt/sc.
+- 2026-11-24 — Slice 2 sc-voice: real whisper.cpp 96ec4d9 (static), Piper en_GB-alba-medium, Silero VAD, openWakeWord hey_jarvis. Real-time scripted mic: wake → question → spoken reply → follow-up without wake; own voice fed back at full volume never re-triggers; barge-in cuts playback before the wake phrase ends and cancels generation; STT/brain down → spoken fallback. Real model voice turn: "my dog is called biscuit", first audio ~2 s (2-core CPU sandbox).
+- 2026-11-24 — Python 3.10 (nanob's) + pinned deps: all sc tests pass, incl. real model.
+- 2026-11-24 — Review pass found and fixed: questions stored as memories (H11), speakerphone privacy (H12), clear-text LAN tokens (H13), aplay not killed on cancel (H14), startup NameError in the new TLS path, markup stripping order, healthz full-DB check on every call.
+- 2026-11-24 — On-device acceptance tool exercised here: B1 PASS (sandbox model), D1 20/20, D2 0/5 leaks; A1/G1 correctly FAIL off-Jetson.
+- 2026-11-24 — Intermittent voice/real-model failures traced to two causes, not the loop: sampling (temperature 0.7 on a 0.5B model answered "Jack") and Piper's noise in the simulated person's voice (whisper heard "dot"). Tests now run sc-core at temperature 0 and synthesize the person deterministically; 4 consecutive runs 12/12. Real-voice STT accuracy stays open (H15, C1 on nanob).
+- 2026-11-24 — Clean branch `sc-v3-rebuild` from main: v3 + #16's torch-free pyproject/constraints.lock only (the 8 WS PRs are not bundled). Fresh venv: 80 sc tests + 34 main tests pass.

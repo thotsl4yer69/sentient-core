@@ -1,0 +1,31 @@
+# STATUS — 2026-11-24
+
+**v3 is built and runs here end to end. Nothing has run on nanob.** Highest
+level reached: **2 — Runs here** (CI pending on the PR). Every hardware
+acceptance test in TARGET.md is still NOT TESTED.
+
+| Component | Ladder | Evidence / gap |
+|---|---|---|
+| sc-core (turns, persona, memory, API) | 2 | 80 sc tests in total incl. real llama-server and real MiniLM; Python 3.10 run |
+| sc-voice (wake, VAD, STT, TTS, barge-in) | 2 | real models in real time with a scripted mic; no real microphone or speaker yet |
+| Memory import from legacy Redis | 2 | against real redis-server with the legacy layout; real nanob data never seen |
+| Installer + units | 2 | installer run for real here (systemd stubbed); units pass `systemd-analyze verify`; never run on a Jetson |
+| sc-llm container on Jetson | 1 | image + flags copied from scripts/jetson-models.sh; unconfirmed (H16) |
+| whisper.cpp CUDA build | 1 | CPU build verified; CUDA flags (sm_87) unverified |
+| TLS for LAN/AIRI | 2 | real HTTPS process test with local CA |
+| AIRI → sc-core | 1 | OpenAI-compatible shape tested; never with the real AIRI app |
+| Acceptance tool | 2 | exercised here; A1/G1 correctly fail off-Jetson |
+| nanob | unknown | not reachable; identity/IP/OS unverified (H9, H10) |
+
+## Next, on nanob (deploy/v3/README.md)
+
+1. Link a LAN machine to this chat (or run the commands yourself).
+2. A1 identity, A2 backup + verify.
+3. Stop (not disable) the old stack, install, start sc-llm + sc-core: confirm H16.
+4. Acceptance: B1, D1/D2 (with a reboot), C1 (10 spoken turns), E1–E3, F1, G1; then F2 (24 h).
+
+## Known limits
+
+- No speaker identification: the speakerphone treats the room as the whole household (privacy-safe default).
+- Wake phrase is "Hey Jarvis" until a "Hey Cortana" model is trained.
+- Avatar (#20), pi1 vision, Home Assistant and proactive features are out of this campaign.

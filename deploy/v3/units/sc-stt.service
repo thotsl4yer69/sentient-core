@@ -1,0 +1,33 @@
+[Unit]
+Description=Sentient Core speech-to-text (whisper.cpp whisper-server, CUDA)
+PartOf=sc.target
+
+[Service]
+Type=simple
+User=sc
+Group=sc
+EnvironmentFile=-/etc/sc/stt.env
+Environment=SC_STT_MODEL=/opt/sc/models/whisper/ggml-base.en.bin SC_STT_THREADS=4
+ExecStart=/opt/sc/bin/whisper-server -m ${SC_STT_MODEL} --host 127.0.0.1 --port 18081 \
+    -t ${SC_STT_THREADS} --language en --no-timestamps
+Restart=always
+RestartSec=2
+MemoryMax=900M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/opt/sc
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+# CUDA on Tegra needs the nvgpu/nvmap device nodes, so PrivateDevices stays off.
+SupplementaryGroups=video render
+SyslogIdentifier=sc-stt
+
+[Install]
+WantedBy=sc.target

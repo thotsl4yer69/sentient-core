@@ -1,0 +1,41 @@
+# /etc/sc/sc.toml — Sentient Core v3 (sc-core). Every key is optional.
+# Environment variables SC_<KEY> override these (e.g. SC_BIND_HOST).
+
+# Loopback by default. To let AIRI on your phone/PC reach Cortana over the LAN,
+# set bind_host to "0.0.0.0" AND give it a certificate (deploy/v3/make-cert.sh):
+# tokens must not cross Wi-Fi in clear text. Every request needs a bearer token,
+# and /healthz then shows only {"status": ...} without one.
+bind_host = "127.0.0.1"
+bind_port = 8770
+# tls_cert = "/etc/sc/tls/server.crt"
+# tls_key = "/etc/sc/tls/server.key"
+# allow_plain_lan = false   # true only if you accept tokens in clear text
+
+# Browser origins allowed to call the API (only needed for AIRI's web page;
+# the AIRI desktop app doesn't need CORS). Exact origins, never "*".
+# cors_origins = ["http://192.168.1.50:5173"]
+
+llm_url = "http://127.0.0.1:18080"
+llm_model = "gemma-4-E2B_q4_0-it.gguf"
+
+db_path = "/var/lib/sc/sc.db"
+tokens_file = "/etc/sc/tokens"
+persona_path = "/opt/sc/personality/cortana.md"
+models_dir = "/opt/sc/models"
+timezone = "Australia/Melbourne"
+
+# Turn rules (seconds / tokens)
+voice_queue_s = 2.0
+voice_first_token_s = 8.0
+voice_total_s = 25.0
+voice_max_tokens = 160
+chat_queue_s = 30.0
+chat_first_token_s = 30.0
+chat_total_s = 120.0
+chat_max_tokens = 1024
+
+# Memory
+session_idle_s = 1800.0
+history_turns = 8
+memory_top_k = 6
+memory_min_score = 0.35

@@ -1,0 +1,108 @@
+name: sc (v3) checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sc-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'   # nanob runs Python 3.10
+      - name: System packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq redis-server shellcheck openssl
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" httpx
+      - name: MiniLM model (sha256-checked)
+        run: python -m sc.embed --fetch
+      - name: Lint
+        run: |
+          python -m ruff check sc tests/sc tools/sc_acceptance.py
+          shellcheck -S warning deploy/v3/install.sh deploy/v3/make-cert.sh
+          bash -n deploy/v3/install.sh
+      - name: Tests (sc)
+        run: python -m pytest -q -rs tests/sc --ignore=tests/sc/test_voice_loop.py
+      - name: Installer dry run
+        run: sudo bash deploy/v3/install.sh --dry-run --allow-non-jetson --skip-model --skip-image --users jack,partner --voice
+
+  end-to-end:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SC_TEST_LLAMA_SERVER: ${{ github.workspace }}/ext/llama.cpp/build/bin/llama-server
+      SC_TEST_GGUF: ${{ github.workspace }}/ext/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+      SC_TEST_PIPER_VOICE: ${{ github.workspace }}/ext/voice/en_GB-alba-medium.onnx
+      SC_TEST_SILERO: ${{ github.workspace }}/ext/voice/silero_vad.onnx
+      SC_TEST_OWW_DIR: ${{ github.workspace }}/ext/voice/openwakeword
+      SC_TEST_WHISPER_URL: http://127.0.0.1:18081
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Cache builds and models
+        uses: actions/cache@v4
+        with:
+          path: ext
+          key: sc-e2e-${{ hashFiles('deploy/v3/install.sh') }}-v1
+      - name: Build llama-server and whisper-server (pinned whisper commit)
+        run: |
+          set -euo pipefail
+          mkdir -p ext && cd ext
+          if [ ! -x llama.cpp/build/bin/llama-server ]; then
+            git clone -q --depth 1 https://github.com/ggml-org/llama.cpp
+            cmake -S llama.cpp -B llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF \
+              -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF >/dev/null
+            cmake --build llama.cpp/build --target llama-server -j "$(nproc)" >/dev/null
+          fi
+          WHISPER_COMMIT=$(sed -n 's/^WHISPER_COMMIT="\(.*\)"/\1/p' ../deploy/v3/install.sh)
+          if [ ! -x whisper.cpp/build/bin/whisper-server ]; then
+            mkdir -p whisper.cpp && git -C whisper.cpp init -q
+            git -C whisper.cpp remote add origin https://github.com/ggml-org/whisper.cpp || true
+            git -C whisper.cpp fetch -q --depth 1 origin "$WHISPER_COMMIT" && git -C whisper.cpp checkout -q FETCH_HEAD
+            cmake -S whisper.cpp -B whisper.cpp/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DWHISPER_BUILD_TESTS=OFF >/dev/null
+            cmake --build whisper.cpp/build --target whisper-server -j "$(nproc)" >/dev/null
+          fi
+      - name: Models (sha256-checked, same pins as the installer)
+        run: |
+          set -euo pipefail
+          cd ext && mkdir -p models voice
+          get() { [ -f "$1" ] && echo "$2  $1" | sha256sum -c --quiet - && return 0
+                  curl -fsSL --retry 3 -o "$1" "$3"; echo "$2  $1" | sha256sum -c --quiet -; }
+          get models/qwen2.5-0.5b-instruct-q4_k_m.gguf 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db \
+            https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          grep -E '^\s+"(whisper|silero|piper|openwakeword)' ../deploy/v3/install.sh | tr -d ' "' | while IFS='|' read -r name sha url alt; do
+            dest="voice/$(basename "$name")"; [ "${name%%/*}" = openwakeword ] && dest="voice/openwakeword/$(basename "$name")"
+            mkdir -p "$(dirname "$dest")"
+            url=${url//\$HF/https://huggingface.co}; alt=${alt//\$OWW_MIRROR/https://huggingface.co/harvestsu/openwakeword-onnx/resolve/main}
+            url=${url//\$OWW_RELEASE/https://github.com/dscripka/openWakeWord/releases/download/v0.5.1}
+            get "$dest" "$sha" "$url" || get "$dest" "$sha" "$alt"
+          done
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" httpx "piper-tts==1.8.0" requests tqdm scipy scikit-learn
+          python -m pip install --no-deps "openwakeword==0.6.0"
+          python -m sc.embed --fetch
+          sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+      - name: Start whisper-server
+        run: |
+          ext/whisper.cpp/build/bin/whisper-server -m ext/voice/ggml-base.en.bin --host 127.0.0.1 --port 18081 \
+            -t "$(nproc)" > whisper.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:18081/ && exit 0; sleep 1; done
+          cat whisper.log; exit 1
+      - name: Real model and real voice tests
+        run: python -m pytest -q -rs -s tests/sc/test_real_model.py tests/sc/test_voice_loop.py
