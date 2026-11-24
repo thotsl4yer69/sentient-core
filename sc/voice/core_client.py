@@ -77,13 +77,16 @@ class CoreClient:
         finally:
             resp.close()
 
-    async def cancel(self) -> None:
-        if not self.turn_id:
+    async def cancel(self, turn_id: str | None = None) -> None:
+        """Cancel ``turn_id`` (default: the latest turn). Captured by the caller
+        so a later turn can't be cancelled by mistake."""
+        turn_id = turn_id or self.turn_id
+        if not turn_id:
             return
         try:
             http = await self._session()
-            async with http.post(f"{self.url}/v1/turns/{self.turn_id}/cancel",
+            async with http.post(f"{self.url}/v1/turns/{turn_id}/cancel",
                                  timeout=aiohttp.ClientTimeout(total=3)) as r:
                 await r.read()
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            logger.warning("could not cancel turn %s: %s", self.turn_id, exc)
+            logger.warning("could not cancel turn %s: %s", turn_id, exc)

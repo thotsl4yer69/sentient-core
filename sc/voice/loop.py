@@ -122,6 +122,7 @@ class VoiceLoop:
         self._listen_deadline = 0.0
         self._guard_until = 0.0
         self._turn_task: asyncio.Task | None = None
+        self._background: set[asyncio.Task] = set()
         self.records: list[TurnRecord] = []
         self.stopped = asyncio.Event()
 
@@ -171,6 +172,8 @@ class VoiceLoop:
             if self._turn_task and not self._turn_task.done():
                 self._turn_task.cancel()
                 await _reap(self._turn_task)
+            for task in list(self._background):
+                await _reap(task)
 
     async def _on_frame(self, frame: np.ndarray) -> None:
         now = self.clock()
@@ -210,17 +213,27 @@ class VoiceLoop:
                 self._go_idle()
 
     async def _barge_in(self, now: float) -> None:
+        """Never waits on the audio path: a slow network call here would stop
+        frames being read (arecord's pipe holds ~2 s) and the listening window
+        could expire before the person's next words are processed."""
         logger.info("barge-in")
         self.status.barge_ins += 1
         self.sink.stop()
         task = self._turn_task
         if task and not task.done():
             task.cancel()
-            await _reap(task)
-        await self.core.cancel()
+            self._spawn(_reap(task))
+        # Closing the stream already cancels the turn in sc-core; the explicit
+        # cancel is a backstop and runs in the background.
+        self._spawn(self.core.cancel(self.core.turn_id))
         if self.wake:
             self.wake.reset()
         self._start_listening(now, window_s=self.s.no_speech_timeout_s, include_preroll=False)
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     # ── one turn ──────────────────────────────────────────────────────────
     async def _speak(self, text: str, rec: TurnRecord) -> bool:

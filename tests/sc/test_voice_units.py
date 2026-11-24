@@ -158,3 +158,68 @@ def test_endpointer_hysteresis():
     assert ep.update([0.1] * 9) is None
     assert ep.update([0.1]) == "end"
     assert ep.heard_speech and not ep.in_speech
+
+
+async def test_barge_in_never_blocks_the_audio_path(tmp_path):
+    """A slow sc-core cancel (network) must not stop frames being processed."""
+    from dataclasses import replace
+
+    import numpy as np
+
+    from sc.voice.config import VoiceSettings
+    from sc.voice.loop import VoiceLoop
+
+    class Wake:
+        fire = False
+
+        def detected(self, frame):
+            return self.fire
+
+        def reset(self):
+            pass
+
+    class Vad:
+        def process(self, pcm):
+            return []
+
+        def reset(self):
+            pass
+
+    class SlowCore:
+        turn_id = "t-1"
+
+        async def cancel(self, turn_id=None):
+            await asyncio.sleep(5)
+
+    class Sink:
+        playing = True
+        stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    wake, core, sink = Wake(), SlowCore(), Sink()
+    s = replace(VoiceSettings(), status_path=tmp_path / "status.json")
+    loop = VoiceLoop(s, source=None, sink=sink, vad=Vad(), stt=None, tts=None, core=core, wake=wake)
+    hang = asyncio.Event()
+
+    async def speaking_turn():
+        await hang.wait()
+
+    loop._turn_task = asyncio.create_task(speaking_turn())
+    loop.state = "speaking"
+    wake.fire = True
+    frame = np.zeros(1280, dtype=np.int16)
+    t0 = asyncio.get_running_loop().time()
+    await loop._on_frame(frame)
+    elapsed = asyncio.get_running_loop().time() - t0
+    assert elapsed < 0.2, f"barge-in blocked the audio path for {elapsed:.2f}s"
+    assert sink.stopped and loop.state == "listening" and loop.status.barge_ins == 1
+    await asyncio.sleep(0)
+    assert loop._turn_task.cancelled()
+    wake.fire = False
+    for _ in range(5):
+        await loop._on_frame(frame)  # frames keep flowing while the cancel is in flight
+    assert loop._background, "the sc-core cancel runs in the background"
+    for task in list(loop._background):
+        task.cancel()
