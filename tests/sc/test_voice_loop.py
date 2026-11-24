@@ -356,5 +356,6 @@ async def test_real_model_end_to_end(models, tts, person, real_llm_url, core_pro
     last = loop.records[1]
     summary = [(r.transcript, r.outcome, r.reply, r.first_audio_s) for r in loop.records]
     assert last.outcome == "ok" and last.reply.strip(), summary
-    print(f"\nreal model reply: {last.reply!r}; first audio {last.first_audio_s:.2f}s")
+    print(f"\nreal model reply: {last.reply!r}; first audio {last.first_audio_s}s")
+    assert last.first_audio_s is not None, f"answered but said nothing: {summary}"
     assert "biscuit" in last.reply.lower()

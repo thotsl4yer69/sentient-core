@@ -301,3 +301,85 @@ async def test_barge_in_stops_the_turn_even_if_the_cancel_is_lost(tmp_path):
     assert loop.records[-1].outcome == "barge_in"
     assert sink.plays <= 2, f"kept talking for {sink.plays} sentences after barge-in"
     assert loop.state == "listening", "barge-in listening must not be replaced by the follow-up window"
+
+
+def test_emphasis_is_spoken_and_actions_are_not():
+    """Single asterisks are emphasis inside a sentence and stage directions when
+    they stand apart. Dropping emphasis lost the answer itself."""
+    cases = {
+        "Your dog is called *Biscuit*.": "Your dog is called Biscuit.",
+        "your dog is called *biscuit*.": "your dog is called biscuit.",
+        "That is *so* cool.": "That is so cool.",
+        "Your dog is *Biscuit*": "Your dog is Biscuit",
+        "*smiles* Sure thing.": "Sure thing.",
+        "Hi! *waves*": "Hi!",
+        "Got it *nods*": "Got it",
+        "[laughs] Okay.": "Okay.",
+    }
+    for text, spoken in cases.items():
+        assert speakable(text) == spoken, text
+
+
+async def test_a_reply_with_nothing_speakable_is_still_heard(tmp_path):
+    """A reply made only of a stage direction used to end the turn in silence:
+    the person heard nothing after the wake word."""
+    from dataclasses import replace
+
+    import numpy as np
+
+    from sc.voice.config import VoiceSettings
+    from sc.voice.loop import VoiceLoop
+
+    class Vad:
+        def process(self, pcm):
+            return []
+
+        def reset(self):
+            pass
+
+    class Wake:
+        def detected(self, frame):
+            return False
+
+        def reset(self):
+            pass
+
+    class Stt:
+        async def transcribe(self, pcm):
+            return "is the dog happy"
+
+    class Tts:
+        rate = 16000
+
+        def __init__(self):
+            self.said = []
+
+        async def synth(self, text):
+            self.said.append(text)
+            return b"\0\0" * 160
+
+    class Core:
+        turn_id = "t-1"
+
+        async def stream(self, text):
+            yield "*wags tail*"
+
+        async def cancel(self, turn_id=None):
+            pass
+
+    class Sink:
+        playing = False
+
+        async def play(self, pcm, rate):
+            return True
+
+        def stop(self):
+            pass
+
+    tts = Tts()
+    s = replace(VoiceSettings(), status_path=tmp_path / "status.json")
+    loop = VoiceLoop(s, source=None, sink=Sink(), vad=Vad(), stt=Stt(), tts=tts, core=Core(), wake=Wake())
+    await loop._turn(np.zeros(16000, dtype=np.int16), 0.0)
+    rec = loop.records[-1]
+    assert rec.outcome == "ok" and rec.first_audio_s is not None, "the turn ended in silence"
+    assert tts.said == ["wags tail"]
