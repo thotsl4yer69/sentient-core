@@ -1,0 +1,11 @@
+{
+  "name": "sc-airi-client-check",
+  "private": true,
+  "type": "module",
+  "description": "Calls sc-core the way AIRI does, with the xsAI version AIRI pins (moeru-ai/airi pnpm-workspace.yaml, 2026-11-24).",
+  "dependencies": {
+    "@xsai/model": "0.5.1",
+    "@xsai/stream-text": "0.5.1",
+    "@xsai/tool": "0.5.1"
+  }
+}

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 import socket
 import statistics
 import subprocess
@@ -168,3 +169,22 @@ def test_voice_turn_is_short(real_llm_url, core):
     text = r["choices"][0]["message"]["content"]
     assert text.strip()
     assert r["usage"]["completion_tokens"] <= 160
+
+
+def test_airi_client_library_streams_with_context(real_llm_url, core):
+    """B2 minus the AIRI app itself: AIRI's own client library (xsAI 0.5.1, the
+    version AIRI pins) lists models and streams real replies from sc-core, with
+    AIRI's tool list, content-part arrays and character prompt, and the second
+    turn sees the first. tests/airi/check.mjs is the client."""
+    node = shutil.which("node")
+    airi = REPO / "tests" / "airi"
+    ready = node is not None and (airi / "node_modules" / "@xsai" / "stream-text").is_dir()
+    if not ready:
+        if os.environ.get("SC_TEST_AIRI") == "1":
+            pytest.fail("SC_TEST_AIRI=1 but node or tests/airi/node_modules is missing")
+        pytest.skip("needs node and `npm ci --prefix tests/airi`")
+    start, _, tok = core
+    url = start(real_llm_url)
+    r = subprocess.run([node, str(airi / "check.mjs")], check=False, env={**os.environ, "SC_URL": url, "SC_TOKEN": tok["jack"]},
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr

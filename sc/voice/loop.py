@@ -31,7 +31,7 @@ import numpy as np
 from sc.voice.config import VoiceSettings
 from sc.voice.core_client import CoreClient, CoreUnavailable
 from sc.voice.speech import STTError
-from sc.voice.text import SentenceSplitter
+from sc.voice.text import SentenceSplitter, plain
 from sc.voice.vad import Endpointer, SileroVAD
 
 logger = logging.getLogger("sc.voice")
@@ -327,6 +327,12 @@ class VoiceLoop:
                     break
                 await self._speak(sentence, rec)
             rec.reply = "".join(parts)
+            if rec.first_audio_s is None and not rec.outcome and rec.reply.strip():
+                # Every sentence was stage directions or emoji. Say the words
+                # rather than leave the person in silence after the wake word.
+                fallback = plain(rec.reply)
+                if fallback:
+                    await self._speak(fallback, rec)
             rec.outcome = rec.outcome or "ok"
         finally:
             if not producer.done():

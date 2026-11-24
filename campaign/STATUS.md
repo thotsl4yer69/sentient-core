@@ -12,10 +12,11 @@ still NOT TESTED.
 | sc-voice (wake, VAD, STT, TTS, barge-in) | 3 | real models in real time with a scripted mic, green in CI; no real microphone or speaker yet |
 | Memory import from legacy Redis | 2 | against real redis-server with the legacy layout; real nanob data never seen |
 | Installer + units | 2 | installer run for real here (systemd stubbed); units pass `systemd-analyze verify`; never run on a Jetson |
-| sc-llm container on Jetson | 1 | image + flags copied from scripts/jetson-models.sh; unconfirmed (H16) |
+| sc-llm container on Jetson | 1 | image + flags copied from scripts/jetson-models.sh; unconfirmed (H16). CI now tests the same llama.cpp build (b8708) on x86, but not the container or the unit's flags |
 | whisper.cpp CUDA build | 1 | CPU build verified; CUDA flags (sm_87) unverified |
 | TLS for LAN/AIRI | 2 | real HTTPS process test with local CA |
-| AIRI → sc-core | 1 | OpenAI-compatible shape tested; never with the real AIRI app |
+| AIRI → sc-core | 3 | AIRI's own client library (xsAI 0.5.1) streams with context against real llama-server b8708, in CI; CORS preflight checked here; never with the AIRI app itself (B2) |
+| Backup + restore (A2) | 2 (unit tests 3) | real Redis/SQLite/git/age backup, verify, Redis snapshot restored 52/52 keys, then imported by sc.migrate — here only; the tool's unit tests run in CI as root and as a normal user; never on nanob |
 | Acceptance tool | 2 | exercised here; A1/G1 correctly fail off-Jetson |
 | nanob | unknown | not reachable; identity/IP/OS unverified (H9, H10) |
 

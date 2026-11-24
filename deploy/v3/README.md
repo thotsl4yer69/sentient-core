@@ -26,13 +26,28 @@ must show the same fingerprints (192.168.1.168 has also been the Windows ATHENA 
 
 ## 1. Backup first (A2)
 
+Make the age key on another machine (`age-keygen -o nanob-backup-identity.txt`)
+and keep that file off nanob except while verifying; only the `age1...` public
+key goes on the command line.
+
 ```sh
+command -v age >/dev/null || sudo apt-get install -y age     # Ubuntu universe; no upgrade
 sudo python3 tools/orin_backup.py backup --dest /mnt/orin-ai/backups --profile nanob \
   --age-recipient age1... --dry-run          # then without --dry-run
 sudo python3 tools/orin_backup.py verify --archive /mnt/orin-ai/backups/orin-backup-*.tar.age \
-  --scratch /mnt/orin-ai/backups/restore-test --identity /offline/nanob-backup-identity.txt
+  --scratch /mnt/orin-ai/backups/restore-test-$(date +%s) --identity /offline/nanob-backup-identity.txt
 ```
 See `docs/BACKUP.md`. Don't continue unless `verify` passes.
+
+The nanob profile names every unit, `/etc` file and checkout the old stack was
+known to use, and refuses to run if any is missing, listing them all. nanob
+hasn't been seen since early November, so expect some. For each one, check
+it is really gone (`systemctl cat <unit>`, `ls -l <path>`), not renamed. Then
+rerun with the list you found. `--unit` and `--etc` replace the profile's
+lists rather than adding to them, so name everything you want kept, e.g.
+`--unit airi.service --unit mosquitto.service --unit redis-server.service ...`.
+The old memories are in Redis; the backup takes a live snapshot with
+`redis-cli --rdb`, and `sc.migrate` (step 5) imports them read-only. Stop Redis only after that import, never before.
 
 ## 2. Free the GPU, the port and the microphone (reversible)
 
@@ -69,6 +84,7 @@ journalctl -fu sc-voice                         # "sc-voice ready", then "captur
 ## 5. Bring the old memories across
 
 ```sh
+systemctl is-active --quiet redis-server || sudo systemctl start redis-server   # step 2 may have stopped it with the old target
 sudo -u sc env SC_CONFIG=/etc/sc/sc.toml /opt/sc/venv/bin/python -m sc.migrate --owner jack --dry-run
 sudo -u sc env SC_CONFIG=/etc/sc/sc.toml /opt/sc/venv/bin/python -m sc.migrate --owner jack
 ```
@@ -100,8 +116,9 @@ Every result is appended to `sc-acceptance.jsonl`; paste it into `campaign/LOG.m
 
 AIRI → Settings → Providers → Chat → **OpenAI Compatible**:
 
-* Base URL: `http://127.0.0.1:8770/v1` when AIRI runs on nanob, otherwise
-  `https://<nanob-ip>:8770/v1` after enabling TLS:
+* Base URL: `http://127.0.0.1:8770/v1` only when the browser or AIRI app runs on
+  nanob itself (127.0.0.1 is always the device the browser is on). From a phone
+  or PC, use `https://<nanob-ip>:8770/v1` after enabling TLS:
   ```sh
   sudo deploy/v3/make-cert.sh <nanob-ip> nanob
   # /etc/sc/sc.toml: bind_host = "0.0.0.0", tls_cert/tls_key = /etc/sc/tls/server.{crt,key}
@@ -110,6 +127,14 @@ AIRI → Settings → Providers → Chat → **OpenAI Compatible**:
   and install `/etc/sc/tls/ca.crt` as trusted on the AIRI device.
 * API key: that person's token from `/root/sc-tokens.txt`.
 * Model: `cortana`. Then Settings → Modules → Consciousness → select it.
+
+* Browser only: allow the AIRI page's origin. It's the scheme, host and port
+  in the address bar where AIRI is open, e.g. `http://192.168.1.159:5173`. The
+  old AIRI's port was never confirmed, so read it from the address bar. Put it in
+  `/etc/sc/sc.toml` as `cors_origins = ["http://192.168.1.159:5173"]`, then
+  `sudo systemctl restart sc-core`. Without it the browser blocks every reply,
+  and AIRI shows a network error while sc-core logs nothing. Each origin must
+  match exactly: `localhost` and `127.0.0.1` count as different origins.
 
 The AIRI web page served over https can only call an https endpoint; the AIRI
 desktop app can use either. Leave AIRI's own speech modules off: speech runs

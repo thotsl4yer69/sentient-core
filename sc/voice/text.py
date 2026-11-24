@@ -8,8 +8,28 @@ _END = re.compile(r"([.!?…]+[\"')\]]*)(\s+|$)")
 _MD = re.compile(r"(\*\*|__|`+|^#+\s*|^\s*[-*•]\s+|^\s*\d+[.)]\s+)", re.MULTILINE)
 _URL = re.compile(r"https?://\S+")
 _EMOJI = re.compile("[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F2FF]")
-_STAGE = re.compile(r"\*[^*\s][^*]{0,58}\*|\[[^\]]{1,60}\]")
+_BRACKETS = re.compile(r"\[[^\]]{1,60}\]")
+_STAR = re.compile(r"\*([^*\s][^*]{0,58})\*")
 _ABBREV = {"e.g.", "i.e.", "etc.", "mr.", "mrs.", "ms.", "dr.", "st.", "vs."}
+
+
+def _star(m: re.Match) -> str:
+    """``*...*`` is a stage direction when it stands apart from the sentence
+    ("*smiles* Sure.", "Hi! *waves*", "Got it *nods*") and emphasis when it is
+    part of one ("called *Biscuit*.", "*so* cool"). Emphasis keeps its words:
+    dropping it once lost the answer itself."""
+    text, inner = m.string, m.group(1)
+    before = text[: m.start()].rstrip()
+    after = text[m.end():]
+    if after[:1] in (".", "!", "?", ",", ";", ":", "…"):
+        return inner                        # punctuation attached: part of the sentence
+    leading = not before or before[-1] in ".!?…"
+    trailing = not after.strip()
+    if leading:
+        return ""                           # opens the sentence or stands alone: an action
+    if trailing:
+        return inner if inner[:1].isupper() else ""   # "is *Biscuit*" vs "got it *nods*"
+    return inner                            # mid-sentence emphasis
 
 
 def speakable(text: str) -> str:
@@ -17,9 +37,19 @@ def speakable(text: str) -> str:
     # Bold/code markers first: otherwise "**Sure** ... *smiles*" pairs the
     # wrong asterisks as one stage direction.
     text = _MD.sub("", text)
-    text = _STAGE.sub("", text)
     text = _EMOJI.sub("", text)
+    text = _BRACKETS.sub("", text)
+    text = _STAR.sub(_star, text)
     return " ".join(text.split())
+
+
+def plain(text: str) -> str:
+    """Every word of the reply with the markup removed, for a reply that
+    ``speakable`` would reduce to nothing ("*wags tail*")."""
+    text = _URL.sub("the link", text)
+    text = _MD.sub("", text)
+    text = _EMOJI.sub("", text)
+    return " ".join(text.replace("*", " ").replace("[", " ").replace("]", " ").split())
 
 
 class SentenceSplitter:
