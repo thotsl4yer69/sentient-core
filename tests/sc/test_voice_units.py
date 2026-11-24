@@ -223,3 +223,81 @@ async def test_barge_in_never_blocks_the_audio_path(tmp_path):
     assert loop._background, "the sc-core cancel runs in the background"
     for task in list(loop._background):
         task.cancel()
+
+
+async def test_barge_in_stops_the_turn_even_if_the_cancel_is_lost(tmp_path):
+    """Python 3.10's asyncio.wait_for can swallow a cancel that lands as
+    playback stops. The turn must stop at its next sentence anyway."""
+    from dataclasses import replace
+
+    import numpy as np
+
+    from sc.voice.config import VoiceSettings
+    from sc.voice.loop import VoiceLoop
+
+    class Vad:
+        def process(self, pcm):
+            return []
+
+        def reset(self):
+            pass
+
+    class Wake:
+        def detected(self, frame):
+            return False
+
+        def reset(self):
+            pass
+
+    class Stt:
+        async def transcribe(self, pcm):
+            return "tell me a long story"
+
+    class Tts:
+        rate = 16000
+
+        async def synth(self, text):
+            return b"\0\0" * 1600
+
+    class Core:
+        turn_id = "t-1"
+
+        async def stream(self, text):
+            for i in range(20):
+                yield f"Sentence {i}. "
+                await asyncio.sleep(0.01)
+
+        async def cancel(self, turn_id=None):
+            pass
+
+    class Sink:
+        playing = False
+
+        def __init__(self):
+            self.plays = 0
+            self.ev = asyncio.Event()
+
+        async def play(self, pcm, rate):
+            self.plays += 1
+            self.playing = True
+            try:
+                await asyncio.sleep(0.2)
+                return not self.ev.is_set()
+            finally:
+                self.playing = False
+
+        def stop(self):
+            self.ev.set()
+
+    sink = Sink()
+    s = replace(VoiceSettings(), status_path=tmp_path / "status.json")
+    loop = VoiceLoop(s, source=None, sink=sink, vad=Vad(), stt=Stt(), tts=Tts(), core=Core(), wake=Wake())
+    turn = asyncio.create_task(loop._turn(np.zeros(16000, dtype=np.int16), 0.0))
+    while sink.plays == 0:
+        await asyncio.sleep(0.01)
+    loop._turn_task = asyncio.create_task(asyncio.sleep(0))  # the real cancel never reaches the turn
+    await loop._barge_in(0.0)
+    await asyncio.wait_for(turn, 2.0)
+    assert loop.records[-1].outcome == "barge_in"
+    assert sink.plays <= 2, f"kept talking for {sink.plays} sentences after barge-in"
+    assert loop.state == "listening", "barge-in listening must not be replaced by the follow-up window"

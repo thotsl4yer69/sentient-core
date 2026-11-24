@@ -122,6 +122,7 @@ class VoiceLoop:
         self._listen_deadline = 0.0
         self._guard_until = 0.0
         self._turn_task: asyncio.Task | None = None
+        self._current: TurnRecord | None = None
         self._background: set[asyncio.Task] = set()
         self.records: list[TurnRecord] = []
         self.stopped = asyncio.Event()
@@ -218,6 +219,11 @@ class VoiceLoop:
         could expire before the person's next words are processed."""
         logger.info("barge-in")
         self.status.barge_ins += 1
+        # Mark the turn first. Cancelling the task alone isn't enough: on Python
+        # 3.10, asyncio.wait_for can swallow a cancel that lands as playback
+        # stops, and the turn would carry on to its next sentence.
+        if self._current is not None:
+            self._current.outcome = "barge_in"
         self.sink.stop()
         task = self._turn_task
         if task and not task.done():
@@ -237,7 +243,11 @@ class VoiceLoop:
 
     # ── one turn ──────────────────────────────────────────────────────────
     async def _speak(self, text: str, rec: TurnRecord) -> bool:
+        if rec.outcome == "barge_in":
+            return False
         pcm = await self.tts.synth(text)
+        if rec.outcome == "barge_in":
+            return False
         if rec.first_audio_s is None:
             rec.first_audio_s = self.clock() - rec.end_of_speech
             self._set("speaking")
@@ -245,6 +255,7 @@ class VoiceLoop:
 
     async def _turn(self, pcm: np.ndarray, end_of_speech: float) -> None:
         rec = TurnRecord(end_of_speech=end_of_speech)
+        self._current = rec
         try:
             t0 = self.clock()
             try:
@@ -256,6 +267,8 @@ class VoiceLoop:
                 await self._speak("Sorry, my hearing isn't working right now.", rec)
                 return
             rec.stt_s = self.clock() - t0
+            if rec.outcome == "barge_in":
+                return
             if not rec.transcript:
                 rec.outcome = "no_speech"
                 return
@@ -265,6 +278,8 @@ class VoiceLoop:
             rec.outcome = "barge_in"
             raise
         finally:
+            if self._current is rec:
+                self._current = None
             logger.info(
                 "voice turn outcome=%s stt_s=%s first_audio_s=%s transcript=%r",
                 rec.outcome or "unknown",
@@ -288,6 +303,8 @@ class VoiceLoop:
         async def produce():
             try:
                 async for delta in self.core.stream(rec.transcript):
+                    if rec.outcome == "barge_in":
+                        break
                     parts.append(delta)
                     for sentence in splitter.feed(delta):
                         await queue.put(sentence)
@@ -306,7 +323,7 @@ class VoiceLoop:
         try:
             while True:
                 sentence = await queue.get()
-                if sentence is None:
+                if sentence is None or rec.outcome == "barge_in":
                     break
                 await self._speak(sentence, rec)
             rec.reply = "".join(parts)
